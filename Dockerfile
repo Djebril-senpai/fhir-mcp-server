@@ -14,7 +14,7 @@
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
 
-FROM --platform=$TARGETPLATFORM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+FROM --platform=$TARGETPLATFORM ghcr.io/astral-sh/uv:0.11-python3.12-trixie-slim AS builder
 WORKDIR /app
 
 # Copy source
@@ -28,7 +28,7 @@ RUN uv venv /opt/venv && \
     uv pip install .
 
 # Runtime
-FROM --platform=$TARGETPLATFORM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
+FROM --platform=$TARGETPLATFORM python:3.12-slim-trixie AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
