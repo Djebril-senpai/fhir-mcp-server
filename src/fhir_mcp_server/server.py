@@ -20,7 +20,7 @@ import logging
 from fhir_mcp_server.utils import (
     build_user_profile,
     create_async_fhir_client,
-    filter_by_fhirpath,
+    filter_resource_fields,
     get_bundle_entries,
     get_default_headers,
     get_operation_outcome,
@@ -248,7 +248,8 @@ def register_mcp_tools(mcp: FastMCP) -> None:
         description=(
             "Executes a standard FHIR `search` interaction on a given resource type, returning a bundle or list of matching resources. "
             "Use this when you need to query for multiple resources based on one or more search-parameters. "
-            "Do not use this tool for create, update, or delete operations, and be aware that large result sets may be paginated by the FHIR server."
+            "Do not use this tool for create, update, or delete operations, and be aware that large result sets may be paginated by the FHIR server. "
+            "Specify fields to filter the response to only the data your task needs (e.g., Patient.birthDate, Observation.valueQuantity)."
         )
     )
     async def search(
@@ -272,11 +273,13 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 ],
             ),
         ],
-        fhirpath_filters: Annotated[
+        fields: Annotated[
             List[str],
             Field(
-                description="FHIRPath expressions to sparse-filter the response. MUST be provided to reduce token usage.",
-                examples=[["Bundle.total", "Condition.code", "Condition.clinicalStatus"]],
+                description="FHIRPath expressions specifying which fields to return. Omitting returns the full resource.",
+                examples=[
+                    ["Condition.code", "Condition.clinicalStatus", "Bundle.total"]
+                ],
             ),
         ] = [],
     ) -> Annotated[
@@ -298,7 +301,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 await client.resources(type).search(Raw(**searchParam)).fetch_raw()
             )
             logger.debug("Async resources fetched:", async_resources)
-            return filter_by_fhirpath(async_resources, fhirpath_filters)
+            return filter_resource_fields(async_resources, fields)
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource search operation. Caused by, ",
@@ -326,7 +329,8 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             "Performs a FHIR `read` interaction to retrieve a single resource instance by its type and resource ID, "
             "optionally refining the response with search parameters or custom operations. "
             "Use it when you know the exact resource ID and require that one resource; do not use it for bulk queries. "
-            "If additional query-level parameters or operations are needed (e.g., _elements or $validate), include them in searchParam or operation."
+            "If additional query-level parameters or operations are needed (e.g., _elements or $validate), include them in searchParam or operation. "
+            "Specify fields to filter the response to only the data your task needs (e.g., Patient.birthDate, Observation.valueQuantity)."
         )
     )
     async def read(
@@ -362,13 +366,16 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 examples=["$everything"],
             ),
         ] = "",
-        fhirpath_filters: Annotated[
+        fields: Annotated[
             List[str],
             Field(
-                description="FHIRPath expressions to sparse-filter the response. MUST be provided to reduce token usage. Bundle.* expressions supported with $everything.",
-                examples=[["Bundle.total", "Patient.name", "Patient.birthDate"]],
+                description="FHIRPath expressions specifying which fields to return to reduce token usage. Omitting returns the full resource. Bundle.* expressions supported with $everything.",
+                examples=[
+                    ["Patient.name", "Patient.birthDate", "Observation.valueQuantity"]
+                ],
             ),
         ] = [],
+
     ) -> Annotated[
         Dict[str, Any],
         Field(
@@ -390,7 +397,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", method="GET", params=searchParam
             )
 
-            return filter_by_fhirpath(bundle, fhirpath_filters)
+            return filter_resource_fields(bundle, fields)
         except ResourceNotFound as ex:
             logger.error(
                 f"Resource of type '{type}' with id '{id}' not found. Caused by, ",

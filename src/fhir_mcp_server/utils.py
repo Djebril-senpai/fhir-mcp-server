@@ -18,8 +18,6 @@ import aiohttp
 import logging
 import fhirpathpy
 
-from functools import lru_cache
-
 from fhir_mcp_server.oauth import ServerConfigs
 
 from typing import Any, Dict, List, Optional
@@ -27,6 +25,8 @@ from fhirpy import AsyncFHIRClient
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+MAX_RECURSION_DEPTH_FOR_FILTERING = 10
 
 
 async def create_async_fhir_client(
@@ -128,32 +128,38 @@ async def get_capability_statement(metadata_url: str) -> Dict[str, Any]:
         raise ValueError("Unable to fetch FHIR metadata")
 
 
-@lru_cache(maxsize=256)
-def _compile_fhirpath(expr: str):
-    return fhirpathpy.compile(expr)
-
-
-def _apply_fhirpath(resource: Dict[str, Any], expressions: List[str]) -> Dict[str, Any]:
+def _filter_with_fhirpath(
+    resource: Dict[str, Any], field_paths: List[str]
+) -> Dict[str, Any]:
     """Apply FHIRPath expressions to a single FHIR resource. Always includes id and resourceType."""
+
     is_bundle = resource.get("resourceType") == "Bundle"
+
     result: Dict[str, Any]
     if is_bundle:
-        result = {}  # bundle id/resourceType are not useful — caller must request via Bundle.id etc if needed
+        result = {}
     else:
-        result = {k: resource[k] for k in ("id", "resourceType") if k in resource}
+        result: Dict[str, Any] = {
+            k: resource[k] for k in ("id", "resourceType") if k in resource
+        }  # keep id and resourceType
 
     resource_type = resource.get("resourceType", "")
     unmatched: List[str] = []
     errors: List[str] = []
 
-    for expr in expressions:
+    for expr in field_paths:
         prefix = expr.split(".")[0]
-        if not prefix or (prefix[0].isupper() and prefix != resource_type):  # skip empty or expressions prefixed for a different resource type e.g. skip "Patient.name" when processing an Observation
+        if (
+            not prefix
+            or (prefix[0].isupper() and prefix != resource_type)
+            or (is_bundle and prefix[0].islower())
+        ):
             continue
         try:
-            matched = _compile_fhirpath(expr)(resource)
+            matched = fhirpathpy.evaluate(resource, expr)
             if matched:
-                result[expr] = matched  # e.g. {"Observation.valueQuantity": [{"value": 7.2, "unit": "mmol/L"}]}
+                key = expr[len(prefix) + 1 :] if prefix == resource_type else expr
+                result[key] = matched
             else:
                 unmatched.append(expr)
         except Exception as e:
@@ -166,27 +172,45 @@ def _apply_fhirpath(resource: Dict[str, Any], expressions: List[str]) -> Dict[st
     return result
 
 
-def filter_by_fhirpath(data: Any, expressions: List[str], _depth: int = 0) -> Any:
-    """Sparse-filter a FHIR response using FHIRPath expressions."""
-    if not expressions:
+def filter_resource_fields(
+    data: Any, field_paths: List[str] | None = None, _depth: int = 0
+) -> Any:
+    """
+    If field_paths provided, apply FHIRPath filtering to include only specified fields, always keeping id and resourceType.
+    For Bundles, field_paths are applied at the Bundle wrapper level (e.g. Bundle.id) and then recursively to each entry.resource (e.g. Bundle.entry.resource.Patient.name).
+    """
+
+    if not field_paths:
         return data
-    if _depth > 10:  # cap recursion to guard against infinite loops in malformed nested Bundles
+
+    if _depth > MAX_RECURSION_DEPTH_FOR_FILTERING:
         return data
+
+    if isinstance(data, list):
+        return [filter_resource_fields(item, field_paths, _depth + 1) for item in data]
+
     if isinstance(data, dict):
         if data.get("resourceType") == "Bundle":
-            # filter bundle metadata using the same expressions, then filter each entry
-            result = _apply_fhirpath(data, expressions)
-            result["entry"] = [filter_by_fhirpath(entry, expressions, _depth + 1) for entry in data.get("entry", [])]
+            result = _filter_with_fhirpath(data, field_paths)
+            result["entry"] = [
+                filter_resource_fields(entry, field_paths, _depth + 1)
+                for entry in data.get("entry", [])
+            ]
             return result
+
         if "resource" in data and isinstance(data["resource"], dict):
-            # raw bundle entry wrapper {"fullUrl": ..., "resource": {...}, "search": ...} — filter the resource inside
-            result = _apply_fhirpath(data["resource"], expressions)
+            result = _filter_with_fhirpath(data["resource"], field_paths)
+
             if "search" in data:
-                result["search"] = data["search"]  # preserve match/include mode for _include queries
+                result["search"] = data[
+                    "search"
+                ]  # preserve match/include mode for _include queries
             return result
-        # single resource
-        return _apply_fhirpath(data, expressions)
+
+        return _filter_with_fhirpath(data, field_paths)
+
     return data
+
 
 def get_default_headers() -> Dict[str, str]:
     return {"Accept": "application/fhir+json", "Content-Type": "application/fhir+json"}

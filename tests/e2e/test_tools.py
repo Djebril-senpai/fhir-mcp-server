@@ -227,7 +227,7 @@ async def test_tool_delete(mcp_server, patient_id):
                 name="delete", arguments=request_payload
             )
             response: Dict = await extract_resource(tool_result)
-            assert response is not None, f"Delete operation failed: {delete_response}"
+            assert response is not None, f"Delete operation failed: {response}"
 
             tool_result: types.CallToolResult = await mcp_session.call_tool(
                 name="read", arguments=request_payload

@@ -21,6 +21,7 @@ from typing import Dict, Any
 
 from fhir_mcp_server.utils import (
     create_async_fhir_client,
+    filter_resource_fields,
     get_bundle_entries,
     trim_resource_capabilities,
     get_operation_outcome_exception,
@@ -334,3 +335,172 @@ class TestGetDefaultHeaders:
             "Accept": "application/fhir+json",
             "Content-Type": "application/fhir+json"
         }
+
+class TestFilterByFhirpath:
+    """Test the filter_by_fhirpath function."""
+
+    PATIENT = {
+        "resourceType": "Patient",
+        "id": "p1",
+        "name": [{"family": "Smith"}],
+        "gender": "male",
+        "birthDate": "1990-01-01",
+    }
+
+    OBSERVATION = {
+        "resourceType": "Observation",
+        "id": "o1",
+        "status": "final",
+        "valueQuantity": {"value": 7.2, "unit": "mmol/L"},
+    }
+
+    PATIENT_MULTI_NAME = {
+        "resourceType": "Patient",
+        "id": "p2",
+        "name": [
+            {"use": "official", "family": "Smith"},
+            {"use": "nickname", "family": "Smitty"},
+        ],
+    }
+
+    def test_non_dict_returns_unchanged(self):
+        """Test that non-dict input is returned unchanged."""
+        assert filter_resource_fields("raw string", ["Patient.name"]) == "raw string"
+
+    def test_single_resource_matched_expression(self):
+        """Test filtering a single resource with a matching FHIRPath expression."""
+        result = filter_resource_fields(self.PATIENT, ["Patient.name"])
+        assert result["resourceType"] == "Patient"
+        assert result["id"] == "p1"
+        assert "name" in result
+
+    def test_expression_for_different_resource_type_skipped(self):
+        """Test that expressions prefixed for a different resource type are not evaluated."""
+        result = filter_resource_fields(self.PATIENT, ["Observation.valueQuantity"])
+        assert "Observation.valueQuantity" not in result
+        assert "_unmatched" not in result
+
+    def test_unprefixed_expression_applied_to_any_resource(self):
+        """Test that unprefixed expressions are applied regardless of resource type."""
+        result = filter_resource_fields(self.PATIENT, ["gender"])
+        assert "gender" in result
+
+    def test_unmatched_expression_recorded(self):
+        """Test that expressions that yield no results are recorded in _unmatched."""
+        result = filter_resource_fields(self.PATIENT, ["Patient.deceased"])
+        assert "deceased" not in result
+        assert "_unmatched" in result
+        assert "Patient.deceased" in result["_unmatched"]
+
+    def test_where_clause_filters_by_condition(self):
+        result = filter_resource_fields(
+            self.PATIENT_MULTI_NAME, ["Patient.name.where(use='official')"]
+        )
+        assert "name.where(use='official')" in result
+        matched = result["name.where(use='official')"]
+        assert len(matched) == 1
+        assert matched[0]["family"] == "Smith"
+
+    def test_empty_string_expression_skipped(self):
+        """Test that empty string expressions are skipped without raising errors."""
+        result = filter_resource_fields(self.PATIENT, [""])
+        assert "_errors" not in result
+
+    def test_bundle_entries_filtered(self):
+        """Test that FHIRPath expressions are applied to each entry in a Bundle."""
+        bundle = {
+            "resourceType": "Bundle",
+            "id": "b1",
+            "entry": [
+                {"resource": self.PATIENT},
+                {"resource": self.OBSERVATION},
+            ],
+        }
+        result = filter_resource_fields(bundle, ["Patient.name"])
+        assert len(result["entry"]) == 2
+        patient_entry = result["entry"][0]
+        assert "name" in patient_entry
+        obs_entry = result["entry"][1]
+        assert "name" not in obs_entry
+
+    def test_bundle_entry_wrapper_preserves_search(self):
+        """Test that search metadata is preserved when filtering a raw bundle entry wrapper."""
+        entry = {
+            "fullUrl": "http://example.com/Patient/p1",
+            "resource": self.PATIENT,
+            "search": {"mode": "match"},
+        }
+        result = filter_resource_fields(entry, ["Patient.name"])
+        assert result["search"] == {"mode": "match"}
+        assert "name" in result
+
+    def test_bundle_entry_wrapper_drops_full_url(self):
+        """fullUrl is intentionally dropped when filtering a raw bundle entry wrapper."""
+        entry = {
+            "fullUrl": "http://example.com/Patient/p1",
+            "resource": self.PATIENT,
+        }
+        result = filter_resource_fields(entry, ["Patient.name"])
+        assert "fullUrl" not in result
+
+    def test_depth_limit_returns_data_unchanged(self):
+        """Test that recursion beyond the depth limit returns data unchanged."""
+        result = filter_resource_fields(self.PATIENT, ["Patient.name"], _depth=11)
+        assert result is self.PATIENT
+
+    def test_invalid_expression_recorded_in_errors(self):
+        """Test that syntactically invalid FHIRPath expressions are recorded in _errors."""
+        result = filter_resource_fields(self.PATIENT, ["!!!invalid"])
+        assert "_errors" in result
+        assert "!!!invalid" in result["_errors"]
+
+    def test_bundle_mixed_resource_types_filtered_correctly(self):
+        """Test that each Bundle entry is only filtered by expressions matching its resource type."""
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [
+                {"resource": self.PATIENT},
+                {"resource": self.OBSERVATION},
+            ],
+        }
+        result = filter_resource_fields(
+            bundle, ["Patient.name", "Observation.valueQuantity"]
+        )
+        patient_entry = result["entry"][0]
+        obs_entry = result["entry"][1]
+        assert "name" in patient_entry
+        assert "valueQuantity" not in patient_entry
+        assert "valueQuantity" in obs_entry
+        assert "name" not in obs_entry
+
+    def test_primitive_with_field_paths_returned_unchanged(self):
+        assert filter_resource_fields("raw-string", ["Patient.name"]) == "raw-string"
+        assert filter_resource_fields(42, ["Patient.name"]) == 42
+
+    def test_bundle_unprefixed_expression_does_not_pollute_wrapper(self):
+        """Unprefixed expressions should filter entry resources but not add _unmatched to the Bundle wrapper."""
+        bundle = {
+            "resourceType": "Bundle",
+            "type": "searchset",
+            "total": 2,
+            "entry": [
+                {
+                    "resource": {
+                        "resourceType": "Patient",
+                        "id": "1",
+                        "name": [{"family": "Smith"}],
+                    }
+                },
+                {
+                    "resource": {
+                        "resourceType": "Patient",
+                        "id": "2",
+                        "name": [{"family": "Jones"}],
+                    }
+                },
+            ],
+        }
+        result = filter_resource_fields(bundle, ["name"])
+        assert "_unmatched" not in result, (
+            f"Bundle wrapper should not have _unmatched: {result.get('_unmatched')}"
+        )
