@@ -159,7 +159,10 @@ def _filter_with_fhirpath(
             matched = fhirpathpy.evaluate(resource, expr)
             if matched:
                 key = expr[len(prefix) + 1 :] if prefix == resource_type else expr
-                result[key] = matched
+                base_field = key.split(".")[0].split("(")[0]
+                original = resource.get(base_field)
+                value = matched[0] if len(matched) == 1 and not isinstance(original, list) else matched
+                result[key] = value
             else:
                 unmatched.append(expr)
         except Exception as e:
@@ -192,10 +195,16 @@ def filter_resource_fields(
     if isinstance(data, dict):
         if data.get("resourceType") == "Bundle":
             result = _filter_with_fhirpath(data, field_paths)
-            result["entry"] = [
-                filter_resource_fields(entry, field_paths, _depth + 1)
-                for entry in data.get("entry", [])
+            entry_field_paths = [
+                expr
+                for expr in field_paths
+                if not expr.startswith("Bundle.") or expr.startswith("Bundle.entry")
             ]
+            if entry_field_paths:
+                result["entry"] = [
+                    filter_resource_fields(entry, entry_field_paths, _depth + 1)
+                    for entry in data.get("entry", [])
+                ]
             return result
 
         if "resource" in data and isinstance(data["resource"], dict):

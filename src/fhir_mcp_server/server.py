@@ -300,7 +300,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             async_resources: list[Any] = (
                 await client.resources(type).search(Raw(**searchParam)).fetch_raw()
             )
-            logger.debug("Async resources fetched:", async_resources)
+            logger.debug("Async resources fetched: %s", async_resources)
             return filter_resource_fields(async_resources, fields)
         except ValueError as ex:
             logger.exception(
@@ -309,7 +309,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform search operation.",
+                diagnostics="The user does not have the rights to perform search operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -414,7 +414,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform read operation.",
+                diagnostics="The user does not have the rights to perform read operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -507,7 +507,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform create operation.",
+                diagnostics="The user does not have the rights to perform create operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -604,7 +604,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform update operation.",
+                diagnostics="The user does not have the rights to perform update operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -701,7 +701,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform delete operation.",
+                diagnostics="The user does not have the rights to perform delete operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -787,7 +787,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
 
         except OperationOutcome as ex:
             logger.exception(
-                f"FHIR server error occurred while reading user resource. Caused by, ",
+                "FHIR server error occurred while reading user resource. Caused by, ",
                 exc_info=ex,
             )
             return ex.resource.get("issue") or await get_operation_outcome_exception()
@@ -832,7 +832,7 @@ def main(transport, log_level) -> int:
         mcp.run(transport=transport)
     except Exception as ex:
         logger.error(
-            f"Unable to run the FHIR MCP server. Caused by, %s", ex, exc_info=True
+            "Unable to run the FHIR MCP server. Caused by, %s", ex, exc_info=True
         )
         return 1
     return 0

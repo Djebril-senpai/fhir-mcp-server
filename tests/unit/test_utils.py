@@ -504,3 +504,33 @@ class TestFilterByFhirpath:
         assert "_unmatched" not in result, (
             f"Bundle wrapper should not have _unmatched: {result.get('_unmatched')}"
         )
+
+    def test_scalar_field_not_wrapped_in_list(self):
+        """fhirpathpy.evaluate always returns a list; scalar fields like birthDate should be stored as scalars, not lists."""
+        result = filter_resource_fields(self.PATIENT, ["Patient.birthDate"])
+        assert result["birthDate"] == "1990-01-01", (
+            f"Expected scalar string but got: {result['birthDate']!r}"
+        )
+
+    def test_scalar_gender_not_wrapped_in_list(self):
+        """Scalar string fields like gender should be unwrapped from the fhirpathpy list."""
+        result = filter_resource_fields(self.PATIENT, ["Patient.gender"])
+        assert result["gender"] == "male"
+
+    def test_array_field_stays_as_list(self):
+        """Array fields like name must remain as lists even when there is only one item."""
+        result = filter_resource_fields(self.PATIENT, ["Patient.name"])
+        assert isinstance(result["name"], list)
+
+    def test_array_field_with_multiple_items_stays_as_list(self):
+        """Array fields with multiple items must remain as lists."""
+        result = filter_resource_fields(self.PATIENT_MULTI_NAME, ["Patient.name"])
+        assert isinstance(result["name"], list)
+        assert len(result["name"]) == 2
+
+    def test_where_clause_on_array_field_stays_as_list(self):
+        """A where() filter on an array field should still return a list."""
+        result = filter_resource_fields(
+            self.PATIENT_MULTI_NAME, ["Patient.name.where(use='official')"]
+        )
+        assert isinstance(result["name.where(use='official')"], list)
