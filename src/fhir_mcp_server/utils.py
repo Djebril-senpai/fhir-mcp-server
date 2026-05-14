@@ -224,11 +224,14 @@ def filter_resource_fields(
 
     if isinstance(data, dict):
         if data.get("resourceType") == "Bundle":
-            entry_field_paths = [
-                expr
-                for expr in field_paths
-                if not expr.startswith("Bundle.") or expr.startswith("Bundle.entry")
-            ]
+            entry_field_paths = []
+            for expr in field_paths:
+                if expr.startswith("Bundle.entry.resource."):
+                    entry_field_paths.append(
+                        expr.removeprefix("Bundle.entry.resource.")
+                    )
+                elif not expr.startswith("Bundle."):
+                    entry_field_paths.append(expr)
             logger.debug(
                 "filter_resource_fields: Bundle with %d entries, %d total paths → %d entry paths",
                 len(data.get("entry", [])),
