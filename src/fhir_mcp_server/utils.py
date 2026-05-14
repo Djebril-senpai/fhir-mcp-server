@@ -134,6 +134,13 @@ def _filter_with_fhirpath(
     """Apply FHIRPath expressions to a single FHIR resource. Always includes id and resourceType."""
 
     is_bundle = resource.get("resourceType") == "Bundle"
+    resource_type = resource.get("resourceType", "")
+
+    logger.debug(
+        "_filter_with_fhirpath: resourceType=%r, paths=%d",
+        resource_type,
+        len(field_paths),
+    )
 
     result: Dict[str, Any]
     if is_bundle:
@@ -143,7 +150,6 @@ def _filter_with_fhirpath(
             k: resource[k] for k in ("id", "resourceType") if k in resource
         }  # keep id and resourceType
 
-    resource_type = resource.get("resourceType", "")
     unmatched: List[str] = []
     errors: List[str] = []
 
@@ -154,6 +160,12 @@ def _filter_with_fhirpath(
             or (prefix[0].isupper() and prefix != resource_type)
             or (is_bundle and prefix[0].islower())
         ):
+            logger.debug(
+                "  skipping %r (prefix %r does not match resourceType %r)",
+                expr,
+                prefix,
+                resource_type,
+            )
             continue
         try:
             matched = fhirpathpy.evaluate(resource, expr)
@@ -161,13 +173,27 @@ def _filter_with_fhirpath(
                 key = expr[len(prefix) + 1 :] if prefix == resource_type else expr
                 base_field = key.split(".")[0].split("(")[0]
                 original = resource.get(base_field)
-                value = matched[0] if len(matched) == 1 and not isinstance(original, list) else matched
+                value = (
+                    matched[0]
+                    if len(matched) == 1 and not isinstance(original, list)
+                    else matched
+                )
                 result[key] = value
+                logger.debug("  matched %r → key=%r", expr, key)
             else:
                 unmatched.append(expr)
         except Exception as e:
             logger.warning("FHIRPath eval failed for expression %r: %s", expr, e)
             errors.append(expr)
+
+    logger.debug(
+        "_filter_with_fhirpath done: resourceType=%r, matched=%d, unmatched=%d, errors=%d",
+        resource_type,
+        len(result)
+        - sum(k in result for k in ("id", "resourceType", "_unmatched", "_errors")),
+        len(unmatched),
+        len(errors),
+    )
     if unmatched:
         result["_unmatched"] = unmatched
     if errors:
@@ -187,6 +213,10 @@ def filter_resource_fields(
         return data
 
     if _depth > MAX_RECURSION_DEPTH_FOR_FILTERING:
+        logger.debug(
+            "filter_resource_fields: max recursion depth %d reached, returning data unfiltered",
+            _depth,
+        )
         return data
 
     if isinstance(data, list):
@@ -194,12 +224,18 @@ def filter_resource_fields(
 
     if isinstance(data, dict):
         if data.get("resourceType") == "Bundle":
-            result = _filter_with_fhirpath(data, field_paths)
             entry_field_paths = [
                 expr
                 for expr in field_paths
                 if not expr.startswith("Bundle.") or expr.startswith("Bundle.entry")
             ]
+            logger.debug(
+                "filter_resource_fields: Bundle with %d entries, %d total paths → %d entry paths",
+                len(data.get("entry", [])),
+                len(field_paths),
+                len(entry_field_paths),
+            )
+            result = _filter_with_fhirpath(data, field_paths)
             if entry_field_paths:
                 result["entry"] = [
                     filter_resource_fields(entry, entry_field_paths, _depth + 1)
@@ -208,6 +244,10 @@ def filter_resource_fields(
             return result
 
         if "resource" in data and isinstance(data["resource"], dict):
+            logger.debug(
+                "filter_resource_fields: unwrapping entry resource (resourceType=%r)",
+                data["resource"].get("resourceType", ""),
+            )
             result = _filter_with_fhirpath(data["resource"], field_paths)
 
             if "search" in data:
