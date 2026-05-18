@@ -370,27 +370,25 @@ class TestFilterByFhirpath:
     def test_single_resource_matched_expression(self):
         """Test filtering a single resource with a matching FHIRPath expression."""
         result = filter_resource_fields(self.PATIENT, ["Patient.name"])
-        assert result["resourceType"] == "Patient"
-        assert result["id"] == "p1"
         assert "name" in result
 
     def test_expression_for_different_resource_type_skipped(self):
         """Test that expressions prefixed for a different resource type are not evaluated."""
         result = filter_resource_fields(self.PATIENT, ["Observation.valueQuantity"])
         assert "Observation.valueQuantity" not in result
-        assert "_unmatched" not in result
+        assert "_not_matched" not in result
 
-    def test_unprefixed_expression_applied_to_any_resource(self):
-        """Test that unprefixed expressions are applied regardless of resource type."""
+    def test_unprefixed_expression_ignored(self):
+        """Unprefixed expressions (no resource-type prefix) are skipped — callers must use explicit prefixes like Patient.gender."""
         result = filter_resource_fields(self.PATIENT, ["gender"])
-        assert "gender" in result
+        assert "gender" not in result
 
-    def test_unmatched_expression_recorded(self):
-        """Test that expressions that yield no results are recorded in _unmatched."""
+    def test_not_matched_expression_recorded(self):
+        """Test that expressions that yield no results are recorded in _not_matched."""
         result = filter_resource_fields(self.PATIENT, ["Patient.deceased"])
         assert "deceased" not in result
-        assert "_unmatched" in result
-        assert "Patient.deceased" in result["_unmatched"]
+        assert "_not_matched" in result
+        assert "Patient.deceased" in result["_not_matched"]
 
     def test_where_clause_filters_by_condition(self):
         result = filter_resource_fields(
@@ -428,10 +426,10 @@ class TestFilterByFhirpath:
         entry = {
             "fullUrl": "http://example.com/Patient/p1",
             "resource": self.PATIENT,
-            "search": {"mode": "match"},
+            "search": {"mode": "include"},
         }
         result = filter_resource_fields(entry, ["Patient.name"])
-        assert result["search"] == {"mode": "match"}
+        assert result["search"] == {"mode": "include"}
         assert "name" in result
 
     def test_bundle_entry_wrapper_drops_full_url(self):
@@ -448,11 +446,6 @@ class TestFilterByFhirpath:
         result = filter_resource_fields(self.PATIENT, ["Patient.name"], _depth=11)
         assert result is self.PATIENT
 
-    def test_invalid_expression_recorded_in_errors(self):
-        """Test that syntactically invalid FHIRPath expressions are recorded in _errors."""
-        result = filter_resource_fields(self.PATIENT, ["!!!invalid"])
-        assert "_errors" in result
-        assert "!!!invalid" in result["_errors"]
 
     def test_bundle_mixed_resource_types_filtered_correctly(self):
         """Test that each Bundle entry is only filtered by expressions matching its resource type."""
@@ -477,33 +470,6 @@ class TestFilterByFhirpath:
         assert filter_resource_fields("raw-string", ["Patient.name"]) == "raw-string"
         assert filter_resource_fields(42, ["Patient.name"]) == 42
 
-    def test_bundle_unprefixed_expression_does_not_pollute_wrapper(self):
-        """Unprefixed expressions should filter entry resources but not add _unmatched to the Bundle wrapper."""
-        bundle = {
-            "resourceType": "Bundle",
-            "type": "searchset",
-            "total": 2,
-            "entry": [
-                {
-                    "resource": {
-                        "resourceType": "Patient",
-                        "id": "1",
-                        "name": [{"family": "Smith"}],
-                    }
-                },
-                {
-                    "resource": {
-                        "resourceType": "Patient",
-                        "id": "2",
-                        "name": [{"family": "Jones"}],
-                    }
-                },
-            ],
-        }
-        result = filter_resource_fields(bundle, ["name"])
-        assert "_unmatched" not in result, (
-            f"Bundle wrapper should not have _unmatched: {result.get('_unmatched')}"
-        )
 
     def test_scalar_field_not_wrapped_in_list(self):
         """fhirpathpy.evaluate always returns a list; scalar fields like birthDate should be stored as scalars, not lists."""
@@ -534,3 +500,33 @@ class TestFilterByFhirpath:
             self.PATIENT_MULTI_NAME, ["Patient.name.where(use='official')"]
         )
         assert isinstance(result["name.where(use='official')"], list)
+
+    def test_search_match_entry_has_id_not_resource_type(self):
+        """search match entries include id (for reference) but not resourceType (caller knows the type from the query)."""
+        entry = {"resource": self.PATIENT, "search": {"mode": "match"}}
+        result = filter_resource_fields(entry, ["Patient.name"], is_search=True)
+        assert "id" in result
+        assert "resourceType" not in result
+
+    def test_search_include_entry_has_id_and_resource_type(self):
+        """_include entries include both id and resourceType because they can be any resource type."""
+        entry = {"resource": self.PATIENT, "search": {"mode": "include"}}
+        result = filter_resource_fields(entry, ["Patient.name"], is_search=True)
+        assert "id" in result
+        assert "resourceType" in result
+
+    def test_read_plain_resource_has_neither_id_nor_resource_type(self):
+        """A directly read resource omits id and resourceType; the caller requested a specific resource and fields are explicit."""
+        result = filter_resource_fields(self.PATIENT, ["Patient.name"])
+        assert "id" not in result
+        assert "resourceType" not in result
+
+    def test_read_everything_bundle_entries_have_id_and_resource_type(self):
+        """$everything bundle entries include both id and resourceType because entries can be any resource type."""
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [{"resource": self.PATIENT}],
+        }
+        result = filter_resource_fields(bundle, ["Patient.name"])
+        assert "id" in result["entry"][0]
+        assert "resourceType" in result["entry"][0]

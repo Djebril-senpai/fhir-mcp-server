@@ -273,12 +273,16 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 ],
             ),
         ],
-        fields: Annotated[
+        response_filter_fhirpaths: Annotated[
             List[str],
             Field(
-                description="FHIRPath expressions specifying which fields to return. Omitting returns the full resource.",
+                description="Specify FHIRPath expressions to filter the response to only the data you need, reducing token usage. Omitting returns the full resource.",
                 examples=[
-                    ["Condition.code", "Condition.clinicalStatus", "Bundle.total"]
+                    [
+                        "Condition.code",
+                        "Condition.clinicalStatus",
+                        "Bundle.link.where(relation='next').url",
+                    ]
                 ],
             ),
         ] = [],
@@ -301,7 +305,9 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 await client.resources(type).search(Raw(**searchParam)).fetch_raw()
             )
             logger.debug("Async resources fetched: %s", async_resources)
-            return filter_resource_fields(async_resources, fields)
+            return filter_resource_fields(
+                async_resources, response_filter_fhirpaths, is_search=True
+            )
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource search operation. Caused by, ",
@@ -366,16 +372,15 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 examples=["$everything"],
             ),
         ] = "",
-        fields: Annotated[
+        response_filter_fhirpaths: Annotated[
             List[str],
             Field(
-                description="FHIRPath expressions specifying which fields to return to reduce token usage. Omitting returns the full resource. Bundle.* expressions supported with $everything.",
+                description="Specify FHIRPath expressions to filter the response to only the data you need, reducing token usage. Omitting returns the full resource. Bundle.* expressions supported with $everything.",
                 examples=[
                     ["Patient.name", "Patient.birthDate", "Observation.valueQuantity"]
                 ],
             ),
         ] = [],
-
     ) -> Annotated[
         Dict[str, Any],
         Field(
@@ -397,7 +402,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", method="GET", params=searchParam
             )
 
-            return filter_resource_fields(bundle, fields)
+            return filter_resource_fields(bundle, response_filter_fhirpaths)
         except ResourceNotFound as ex:
             logger.error(
                 f"Resource of type '{type}' with id '{id}' not found. Caused by, ",
