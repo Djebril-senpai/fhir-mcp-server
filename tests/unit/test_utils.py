@@ -21,7 +21,6 @@ from typing import Dict, Any
 
 from fhir_mcp_server.utils import (
     create_async_fhir_client,
-    filter_resource_fields,
     get_bundle_entries,
     trim_resource_capabilities,
     get_operation_outcome_exception,
@@ -30,6 +29,7 @@ from fhir_mcp_server.utils import (
     get_capability_statement,
     get_default_headers,
 )
+from fhir_mcp_server.filtering import filter_resource_fields
 from fhir_mcp_server.oauth.types import ServerConfigs
 
 

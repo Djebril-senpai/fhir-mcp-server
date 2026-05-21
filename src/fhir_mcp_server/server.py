@@ -17,10 +17,10 @@
 import click
 import logging
 
+from fhir_mcp_server.filtering import filter_resource_fields
 from fhir_mcp_server.utils import (
     build_user_profile,
     create_async_fhir_client,
-    filter_resource_fields,
     get_bundle_entries,
     get_default_headers,
     get_operation_outcome,
