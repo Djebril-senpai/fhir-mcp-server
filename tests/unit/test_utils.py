@@ -447,11 +447,6 @@ class TestFilterByFhirpath:
         result = filter_resource_fields(entry, ["name"])
         assert "name" not in result
 
-    def test_depth_limit_returns_data_unchanged(self):
-        """Test that recursion beyond the depth limit returns data unchanged."""
-        result = filter_resource_fields(self.PATIENT, ["Patient.name"], _depth=11)
-        assert result is self.PATIENT
-
 
     def test_bundle_mixed_resource_types_filtered_correctly(self):
         """Test that each Bundle entry is only filtered by expressions matching its resource type."""

@@ -26,8 +26,6 @@ from mcp.shared._httpx_utils import create_mcp_http_client
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-MAX_RECURSION_DEPTH_FOR_FILTERING = 10
-
 
 async def create_async_fhir_client(
     config: ServerConfigs,
@@ -138,13 +136,13 @@ def _split_bundle_resource_paths(
     """
     bundle_paths = []
     resource_paths = []
-    for p in field_paths:
-        if p.startswith("Bundle.entry.resource."):
-            resource_paths.append(p.removeprefix("Bundle.entry.resource."))
-        elif p.startswith("Bundle."):
-            bundle_paths.append(p)
+    for path in field_paths:
+        if path.startswith("Bundle.entry.resource."):
+            resource_paths.append(path.removeprefix("Bundle.entry.resource."))
+        elif path.startswith("Bundle."):
+            bundle_paths.append(path)
         else:
-            resource_paths.append(p)
+            resource_paths.append(path)
     return bundle_paths, resource_paths
 
 
@@ -170,11 +168,7 @@ def _filter_with_fhirpath(
         try:
             matched = fhirpathpy.evaluate(resource, expr)
             if matched:
-                key = (
-                    expr.removeprefix(f"{resource_type}.")
-                    if prefix == resource_type
-                    else expr
-                )
+                key = expr.removeprefix(f"{resource_type}.")
                 top_level_field = key.split(".")[0].split("(")[0]
                 is_array = isinstance(resource.get(top_level_field), list)
                 result[key] = matched if len(matched) > 1 or is_array else matched[0]
@@ -197,78 +191,78 @@ def _filter_with_fhirpath(
     return result
 
 
+def _filter_entry(
+    entry: Dict[str, Any],
+    paths: List[str],
+    is_search: bool,
+) -> Dict[str, Any]:
+    if "resource" not in entry or not isinstance(entry["resource"], dict):
+        return _filter_with_fhirpath(entry, paths)
+
+    resource = entry["resource"]
+    search_mode = entry.get("search", {}).get("mode")
+    resource_type = resource.get("resourceType", "")
+
+    # e.g. searchset Bundle → entry → collection Bundle → filter its entries too
+    if resource_type == "Bundle":
+        _, inner_paths = _split_bundle_resource_paths(paths)
+        inner_entries = [
+            _filter_with_fhirpath(inner_entry["resource"], inner_paths)
+            if "resource" in inner_entry and isinstance(inner_entry["resource"], dict)
+            else inner_entry
+            for inner_entry in resource.get("entry", [])
+        ]
+        result = {"entry": inner_entries}
+        if search_mode == "include":
+            result["search"] = entry["search"]
+        return result
+
+    if not is_search or search_mode == "include":
+        always_include = [f"{resource_type}.id", f"{resource_type}.resourceType"]
+    elif search_mode == "match":
+        always_include = [f"{resource_type}.id"]
+    else:
+        always_include = []
+
+    result = _filter_with_fhirpath(resource, always_include + paths)
+    if search_mode == "include":
+        result["search"] = entry["search"]
+    return result
+
+
+def _process_one_resource(
+    item: Any,
+    field_paths: List[str],
+    is_search: bool,
+) -> Any:
+    if not isinstance(item, dict):
+        return item
+
+    if item.get("resourceType") == "Bundle":
+        bundle_paths, resource_paths = _split_bundle_resource_paths(field_paths)
+        result = _filter_with_fhirpath(item, bundle_paths) if bundle_paths else {}
+        if resource_paths:
+            result["entry"] = [
+                _filter_entry(entry, resource_paths, is_search)
+                for entry in item.get("entry", [])
+            ]
+        return result
+
+    return _filter_entry(item, field_paths, is_search)
+
+
 def filter_resource_fields(
     data: Any,
     field_paths: List[str] | None = None,
-    _depth: int = 0,
     is_search: bool = False,
 ) -> Any:
-    """
-    If field_paths provided, apply FHIRPath filtering to include only specified fields.
-    For Bundles, field_paths are applied at the Bundle wrapper level and recursively to each entry resource.
-    """
-
     if not field_paths:
         return data
 
-    if _depth >= MAX_RECURSION_DEPTH_FOR_FILTERING:
-        logger.debug(
-            "filter_resource_fields: max recursion depth %d reached, returning data unfiltered",
-            _depth,
-        )
-        return data
-
     if isinstance(data, list):
-        return [
-            filter_resource_fields(item, field_paths, _depth + 1, is_search)
-            for item in data
-        ]
+        return [_process_one_resource(item, field_paths, is_search) for item in data]
 
-    if not isinstance(data, dict):
-        return data
-
-    resource_type = data.get("resourceType", "")
-
-    if resource_type == "Bundle":
-        entries = data.get("entry", [])
-
-        bundle_paths, resource_paths = _split_bundle_resource_paths(field_paths)
-
-        result = _filter_with_fhirpath(data, bundle_paths) if bundle_paths else {}
-
-        if resource_paths:
-            result["entry"] = [
-                filter_resource_fields(entry, resource_paths, _depth + 1, is_search)
-                for entry in entries
-            ]
-        return result
-
-    # Handle individual Bundle entry resources.
-    if "resource" in data and isinstance(data["resource"], dict):
-        logger.debug("Hit this line")
-        resource = data["resource"]
-        search_mode = data.get("search", {}).get("mode")
-        resource_type = resource.get("resourceType", "")
-
-        always_include_fields = []
-
-        # _include search mode matches and $operation results are mixed resource types
-        if not is_search or search_mode == "include":
-            always_include_fields = [
-                f"{resource_type}.id",
-                f"{resource_type}.resourceType",
-            ]
-        elif search_mode == "match":
-            always_include_fields = [f"{resource_type}.id"]
-        result = _filter_with_fhirpath(resource, always_include_fields + field_paths)
-
-        if search_mode == "include":
-            result["search"] = data["search"]  # copy search mode from the bundle entry
-
-        return result
-
-    # single resource read
-    return _filter_with_fhirpath(data, field_paths)
+    return _process_one_resource(data, field_paths, is_search)
 
 
 def get_default_headers() -> Dict[str, str]:
