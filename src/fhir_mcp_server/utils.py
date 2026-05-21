@@ -128,22 +128,24 @@ async def get_capability_statement(metadata_url: str) -> Dict[str, Any]:
         raise ValueError("Unable to fetch FHIR metadata")
 
 
-def _split_bundle_entry_paths(
+def _split_bundle_resource_paths(
     field_paths: List[str],
 ) -> tuple[List[str], List[str]]:
-    """Split field_paths into Bundle-level paths and per-entry relative paths.
+    """Split field_paths into two buckets:
 
-    Returns (bundle_paths, entry_relative_paths) where entry_relative_paths
-    have the 'Bundle.entry.resource.' prefix stripped.
+    - bundle_paths: Bundle.* paths applied to the Bundle wrapper only
+    - resource_paths: paths applied to each entry resource — includes Bundle.entry.resource.* (prefix stripped) and resource-type paths (e.g. Patient.name)
     """
     bundle_paths = []
-    entry_relative_paths = []
+    resource_paths = []
     for p in field_paths:
         if p.startswith("Bundle.entry.resource."):
-            entry_relative_paths.append(p.removeprefix("Bundle.entry.resource."))
-        else:
+            resource_paths.append(p.removeprefix("Bundle.entry.resource."))
+        elif p.startswith("Bundle."):
             bundle_paths.append(p)
-    return bundle_paths, entry_relative_paths
+        else:
+            resource_paths.append(p)
+    return bundle_paths, resource_paths
 
 
 def _filter_with_fhirpath(
@@ -230,42 +232,42 @@ def filter_resource_fields(
     if resource_type == "Bundle":
         entries = data.get("entry", [])
 
-        bundle_paths, entry_resource_paths = _split_bundle_entry_paths(field_paths)
+        bundle_paths, resource_paths = _split_bundle_resource_paths(field_paths)
 
         result = _filter_with_fhirpath(data, bundle_paths) if bundle_paths else {}
 
-        non_bundle_paths = [p for p in bundle_paths if not p.startswith("Bundle.")]
-        all_entry_paths = entry_resource_paths + non_bundle_paths
-        if all_entry_paths:
+        if resource_paths:
             result["entry"] = [
-                filter_resource_fields(entry, all_entry_paths, _depth + 1, is_search)
+                filter_resource_fields(entry, resource_paths, _depth + 1, is_search)
                 for entry in entries
             ]
         return result
 
+    # Handle individual Bundle entry resources.
     if "resource" in data and isinstance(data["resource"], dict):
+        logger.debug("Hit this line")
         resource = data["resource"]
         search_mode = data.get("search", {}).get("mode")
         resource_type = resource.get("resourceType", "")
-        qualified_paths = [
-            p
-            if (p.split(".")[0] and p.split(".")[0][0].isupper())
-            else f"{resource_type}.{p}"
-            for p in field_paths
-        ]
-        # $operation/_include may return mixed resource types
+
+        always_include_fields = []
+
+        # _include search mode matches and $operation results are mixed resource types
         if not is_search or search_mode == "include":
-            prepend = [f"{resource_type}.id", f"{resource_type}.resourceType"]
+            always_include_fields = [
+                f"{resource_type}.id",
+                f"{resource_type}.resourceType",
+            ]
         elif search_mode == "match":
-            prepend = [f"{resource_type}.id"]
-        else:
-            prepend = []
-        result = _filter_with_fhirpath(resource, prepend + qualified_paths)
+            always_include_fields = [f"{resource_type}.id"]
+        result = _filter_with_fhirpath(resource, always_include_fields + field_paths)
 
         if search_mode == "include":
-            result["search"] = data["search"]
+            result["search"] = data["search"]  # copy search mode from the bundle entry
+
         return result
 
+    # single resource read
     return _filter_with_fhirpath(data, field_paths)
 
 

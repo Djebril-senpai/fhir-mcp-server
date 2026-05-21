@@ -441,6 +441,12 @@ class TestFilterByFhirpath:
         result = filter_resource_fields(entry, ["Patient.name"])
         assert "fullUrl" not in result
 
+    def test_bundle_entry_wrapper_bare_path_ignored(self):
+        """Bare paths (no resource-type prefix) passed to a bundle entry wrapper are ignored."""
+        entry = {"resource": self.PATIENT}
+        result = filter_resource_fields(entry, ["name"])
+        assert "name" not in result
+
     def test_depth_limit_returns_data_unchanged(self):
         """Test that recursion beyond the depth limit returns data unchanged."""
         result = filter_resource_fields(self.PATIENT, ["Patient.name"], _depth=11)
