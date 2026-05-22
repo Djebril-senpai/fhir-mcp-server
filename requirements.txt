@@ -11,7 +11,6 @@ cffi==2.0.0
 charset-normalizer==3.4.7
 click==8.3.3
 cryptography==48.0.0
--e file:///home/sachintha/projects/fhir-mcp-filter-with-fhirpath
 fhirpathpy==2.2.0
 fhirpy==2.2.0
 frozenlist==1.8.0
