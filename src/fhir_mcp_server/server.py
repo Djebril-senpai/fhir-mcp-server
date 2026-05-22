@@ -17,7 +17,7 @@
 import click
 import logging
 
-from fhir_mcp_server.filtering import filter_resource_fields
+from fhir_mcp_server.field_filter import filter_resource_fields
 from fhir_mcp_server.utils import (
     build_user_profile,
     create_async_fhir_client,

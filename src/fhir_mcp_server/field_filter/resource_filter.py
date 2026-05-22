@@ -16,7 +16,9 @@
 
 from typing import Any, Dict, List
 
-from fhir_mcp_server.filtering.fhirpath_field_extractor import extract_fields_by_fhirpath
+from fhir_mcp_server.field_filter.fhirpath_field_extractor import (
+    extract_fields_by_fhirpath,
+)
 
 
 def _split_bundle_resource_paths(

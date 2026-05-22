@@ -14,7 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from fhir_mcp_server.filtering import filter_resource_fields
+from fhir_mcp_server.field_filter import filter_resource_fields
 
 
 class TestFilterResourceFields:

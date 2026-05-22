@@ -14,7 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from fhir_mcp_server.filtering.fhirpath_field_extractor import extract_fields_by_fhirpath
+from fhir_mcp_server.field_filter.fhirpath_field_extractor import extract_fields_by_fhirpath
 
 
 class TestEvaluateFhirpath:
