@@ -24,7 +24,7 @@ import uuid
 from typing import Dict
 import mcp.types as types
 from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from contextlib import asynccontextmanager
 
 logging.basicConfig(
@@ -37,7 +37,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def create_mcp_session():
-    async with streamablehttp_client("http://localhost:8001/mcp/") as (read, write, _):
+    async with streamable_http_client("http://localhost:8001/mcp/") as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             yield session
