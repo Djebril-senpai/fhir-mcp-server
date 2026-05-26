@@ -55,6 +55,9 @@ def extract_fields_by_fhirpath(
         try:
             matched = fhirpathpy.evaluate(resource, path)
             if matched:
+                if len(path_parts) < 2:
+                    not_matched.append(path)
+                    continue
                 result_key = ".".join(path_parts[1:])
                 root_field = path_parts[1].split("(")[0]  # "name.where(...)" → "name"
 

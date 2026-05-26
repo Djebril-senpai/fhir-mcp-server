@@ -307,7 +307,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             logger.debug("Async resources fetched: %s", async_resources)
             return filter_resource_fields(
-                async_resources, response_filter_fhirpaths, is_search=True
+                async_resources, response_filter_fhirpaths
             )
         except ValueError as ex:
             logger.exception(

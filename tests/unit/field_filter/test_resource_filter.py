@@ -18,7 +18,6 @@ from fhir_mcp_server.field_filter import filter_resource_fields
 
 
 class TestFilterResourceFields:
-
     PATIENT = {
         "resourceType": "Patient",
         "id": "p1",
@@ -42,7 +41,9 @@ class TestFilterResourceFields:
         assert filter_resource_fields(42, ["Patient.name"]) == 42
 
     def test_list_of_resources_each_filtered(self):
-        result = filter_resource_fields([self.PATIENT, self.OBSERVATION], ["Patient.name"])
+        result = filter_resource_fields(
+            [self.PATIENT, self.OBSERVATION], ["Patient.name"]
+        )
         assert "name" in result[0]
         assert "name" not in result[1]
 
@@ -96,52 +97,121 @@ class TestFilterResourceFields:
 
     def test_bundle_entry_wrapper_preserves_search(self):
         """search metadata on the entry wrapper must be carried through after filtering."""
-        entry = {
-            "fullUrl": "http://example.com/Patient/p1",
-            "resource": self.PATIENT,
-            "search": {"mode": "include"},
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [
+                {
+                    "fullUrl": "http://example.com/Patient/p1",
+                    "resource": self.PATIENT,
+                    "search": {"mode": "include"},
+                }
+            ],
         }
-        result = filter_resource_fields(entry, ["Patient.name"])
-        assert result["search"] == {"mode": "include"}
-        assert "name" in result
+        result = filter_resource_fields(bundle, ["Patient.name"])
+        assert result["entry"][0]["search"] == {"mode": "include"}
+        assert "name" in result["entry"][0]
 
     def test_bundle_entry_wrapper_drops_full_url(self):
         """fullUrl is intentionally not preserved — only the filtered resource fields and search are kept."""
-        entry = {
-            "fullUrl": "http://example.com/Patient/p1",
-            "resource": self.PATIENT,
-        }
-        result = filter_resource_fields(entry, ["Patient.name"])
-        assert "fullUrl" not in result
 
-    # --- always_include logic (id / resourceType) ---
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [
+                {
+                    "fullUrl": "http://example.com/Patient/p1",
+                    "resource": self.PATIENT,
+                }
+            ],
+        }
+        result = filter_resource_fields(bundle, ["Patient.name"])
+        assert "fullUrl" not in result["entry"][0]
 
     def test_read_plain_resource_omits_id_and_resource_type(self):
-        """A directly read resource: only the requested fields; caller already knows what they asked for."""
+        """A directly read resource does not automatically inject id and resourceType if not requested."""
         result = filter_resource_fields(self.PATIENT, ["Patient.name"])
         assert "id" not in result
         assert "resourceType" not in result
 
     def test_read_bundle_entries_include_id_and_resource_type(self):
-        """$everything / collection Bundle entries include id and resourceType — entries can be any resource type."""
+        """Bundle entries always preserve id and resourceType even if not explicitly requested."""
         bundle = {
             "resourceType": "Bundle",
-            "entry": [{"resource": self.PATIENT}],
+            "entry": [
+                {"search": {"mode": "include"}, "resource": self.PATIENT},
+            ],
         }
         result = filter_resource_fields(bundle, ["Patient.name"])
         assert "id" in result["entry"][0]
         assert "resourceType" in result["entry"][0]
 
-    def test_search_match_entry_has_id_not_resource_type(self):
-        """match entries include id for cross-referencing but omit resourceType — caller knows the type from the query."""
-        entry = {"resource": self.PATIENT, "search": {"mode": "match"}}
-        result = filter_resource_fields(entry, ["Patient.name"], is_search=True)
-        assert "id" in result
-        assert "resourceType" not in result
+    def test_bundle_entry_resource_prefix_path(self):
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [{"resource": self.PATIENT}]
+        }
+        result = filter_resource_fields(bundle, ["Bundle.entry.resource.Patient.name"])
+        assert "name" in result["entry"][0]
+        assert "gender" not in result["entry"][0]
 
-    def test_search_include_entry_has_id_and_resource_type(self):
-        """_include entries include both because they can be any resource type."""
-        entry = {"resource": self.PATIENT, "search": {"mode": "include"}}
-        result = filter_resource_fields(entry, ["Patient.name"], is_search=True)
-        assert "id" in result
-        assert "resourceType" in result
+    def test_nested_bundle_filtering(self):
+        nested_bundle = {
+            "resourceType": "Bundle",
+            "id": "inner_b1",
+            "entry": [
+                {"resource": self.PATIENT},
+                {"resource": self.OBSERVATION}
+            ]
+        }
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [{"resource": nested_bundle}]
+        }
+        result = filter_resource_fields(bundle, ["Patient.name"])
+        inner_result = result["entry"][0]
+        assert inner_result["resourceType"] == "Bundle"
+        assert inner_result["id"] == "inner_b1"
+        assert "name" in inner_result["entry"][0]
+        assert "gender" not in inner_result["entry"][0]
+        assert "name" not in inner_result["entry"][1]
+
+    def test_entry_without_resource(self):
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [{"response": {"status": "200 OK"}}]
+        }
+        result = filter_resource_fields(bundle, ["Patient.name"])
+        assert result["entry"][0] == {"response": {"status": "200 OK"}}
+
+    def test_resource_without_resource_type(self):
+        data = {"id": "1", "name": "John"}
+        result = filter_resource_fields(data, ["Patient.name"])
+        assert result == data
+
+    def test_nested_bundle_not_matched_stripped(self):
+        nested_bundle = {
+            "resourceType": "Bundle",
+            "id": "inner_b2",
+            "entry": [{"resource": self.PATIENT}]
+        }
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [{"resource": nested_bundle}]
+        }
+        result = filter_resource_fields(bundle, ["Patient.non_existent"])
+        inner_result = result["entry"][0]
+        assert "_not_matched" in inner_result["entry"][0]
+        assert "Patient.non_existent" in inner_result["entry"][0]["_not_matched"]
+        
+
+    def test_nested_bundle_entry_without_resource(self):
+        nested_bundle = {
+            "resourceType": "Bundle",
+            "entry": [{"response": {"status": "200"}}]
+        }
+        bundle = {
+            "resourceType": "Bundle",
+            "entry": [{"resource": nested_bundle}]
+        }
+        result = filter_resource_fields(bundle, ["Patient.name"])
+        inner_result = result["entry"][0]
+        assert inner_result["entry"][0] == {"response": {"status": "200"}}
