@@ -45,11 +45,16 @@ class TestFilterResourceFields:
             [self.PATIENT, self.OBSERVATION], ["Patient.name"]
         )
         assert "name" in result[0]
+        assert "gender" not in result[0]
+        assert "birthDate" not in result[0]
         assert "name" not in result[1]
+        assert "status" not in result[1]
 
     def test_single_resource_matched(self):
         result = filter_resource_fields(self.PATIENT, ["Patient.name"])
         assert "name" in result
+        assert "gender" not in result
+        assert "birthDate" not in result
 
     # --- Bundle traversal ---
 
@@ -65,7 +70,9 @@ class TestFilterResourceFields:
         result = filter_resource_fields(bundle, ["Patient.name"])
         assert len(result["entry"]) == 2
         assert "name" in result["entry"][0]
+        assert "gender" not in result["entry"][0]
         assert "name" not in result["entry"][1]
+        assert "status" in result["entry"][1]  # Observation unchanged
 
     def test_bundle_mixed_resource_types_filtered_correctly(self):
         """Each Bundle entry is only filtered by the expression matching its resource type."""
@@ -143,6 +150,8 @@ class TestFilterResourceFields:
         result = filter_resource_fields(bundle, ["Patient.name"])
         assert "id" in result["entry"][0]
         assert "resourceType" in result["entry"][0]
+        assert result["entry"][0]["id"] == "p1"
+        assert result["entry"][0]["resourceType"] == "Patient"
 
     def test_bundle_entry_resource_prefix_path(self):
         bundle = {
