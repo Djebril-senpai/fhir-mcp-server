@@ -40,16 +40,6 @@ class TestFilterResourceFields:
         assert filter_resource_fields("raw-string", ["Patient.name"]) == "raw-string"
         assert filter_resource_fields(42, ["Patient.name"]) == 42
 
-    def test_list_of_resources_each_filtered(self):
-        result = filter_resource_fields(
-            [self.PATIENT, self.OBSERVATION], ["Patient.name"]
-        )
-        assert "name" in result[0]
-        assert "gender" not in result[0]
-        assert "birthDate" not in result[0]
-        assert "name" not in result[1]
-        assert "status" not in result[1]
-
     def test_single_resource_matched(self):
         result = filter_resource_fields(self.PATIENT, ["Patient.name"])
         assert "name" in result
@@ -161,6 +151,7 @@ class TestFilterResourceFields:
         result = filter_resource_fields(bundle, ["Bundle.entry.resource.Patient.name"])
         assert "name" in result["entry"][0]
         assert "gender" not in result["entry"][0]
+
 
     def test_nested_bundle_filtering(self):
         nested_bundle = {

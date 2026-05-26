@@ -25,151 +25,149 @@ from fhir_mcp_server.field_filter.fhirpath_field_extractor import (
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def _split_bundle_resource_paths(
-    field_paths: List[str],
-) -> tuple[List[str], List[str]]:
-    """Split field_paths into two lists:
+def _group_paths_by_resource_type(entry_paths: List[str]) -> Dict[str, List[str]]:
+    """Group entry_paths by their resource type prefix."""
 
-    - bundle_wrapper_paths: Bundle.* paths applied to the Bundle wrapper only
-    - entry_resource_paths: paths applied to each entry resource — includes Bundle.entry.resource.* (prefix stripped) and resource-type paths (e.g. Patient.name)
-    """
-
-    bundle_wrapper_paths = []
-    entry_resource_paths = []
-
-    for path in field_paths:
+    paths_by_resource_type: Dict[str, List[str]] = {}
+    for path in entry_paths:
+        if not path or "." not in path:
+            continue
+        
+        # Support FHIRPaths that start with Bundle.entry.resource.
+        # eg: Bundle.entry.resource.Patient.name -> Patient.name
         if path.startswith("Bundle.entry.resource."):
-            # Paths like "Bundle.entry.resource.name" become "name" for entry resources
-            entry_resource_paths.append(path.removeprefix("Bundle.entry.resource."))
-        elif path.startswith("Bundle."):
-            # Paths like "Bundle.type" or "Bundle.id" apply to the Bundle wrapper
-            bundle_wrapper_paths.append(path)
-        else:
-            # Resource paths like "Patient.name" apply to entry resources
-            entry_resource_paths.append(path)
+            path = path.replace("Bundle.entry.resource.", "")
 
-    return bundle_wrapper_paths, entry_resource_paths
+        # Extract the resource prefix (e.g. 'Patient' from 'Patient.name.given')
+        resource_type_prefix = path.split(".", 1)[0]
+        if not resource_type_prefix or not resource_type_prefix[0].isupper():
+            continue
+
+        if resource_type_prefix not in paths_by_resource_type:
+            paths_by_resource_type[resource_type_prefix] = []
+
+        paths_by_resource_type[resource_type_prefix].append(path)
+
+    return paths_by_resource_type
 
 
-def _preserve_required_fields(original: Mapping[str, Any], filtered: Dict[str, Any]) -> None:
-    """Always include id and resourceType in the filtered resource."""
-    fields_to_preserve = ["id", "resourceType"]
-    for field in fields_to_preserve:
-        if field in original and field not in filtered:
-            filtered[field] = original[field]
+def _with_preserved_fields(
+    original: Mapping[str, Any], filtered: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Return a new dictionary with id and resourceType preserved at the beginning."""
+    result = {}
+
+    for field in ["id", "resourceType"]:
+        if field in original:
+            result[field] = original[field]
+
+    result.update(filtered)
+
+    return result
+
+
+def _filter_standard_resource(
+    resource: Mapping[str, Any],
+    paths_by_resource_type: Dict[str, List[str]],
+) -> Dict[str, Any]:
+    """Filter a standard, non-Bundle FHIR resource (e.g., Patient, Observation)."""
+    resource_type = resource.get("resourceType", "")
+    paths = paths_by_resource_type.get(resource_type, [])
+    return extract_fields_by_fhirpath(resource, paths)
 
 
 def _filter_nested_bundle(
-    resource: Mapping[str, Any],
-    paths: List[str],
+    bundle: Mapping[str, Any],
+    paths_by_resource_type: Dict[str, List[str]],
 ) -> Dict[str, Any]:
-    """
-    Filter a Bundle that is itself an entry resource 
-    (e.g. a collection Bundle inside a searchset).
+    """Filter a Bundle that is nested inside another Bundle's entries."""
+    logger.debug("Filtering nested Bundle with ID: %s", bundle.get("id"))
+    bundle_fields = paths_by_resource_type.get("Bundle", [])
 
-    Extracts the Bundle's own id/resourceType,
-    then filters each of its entries separately.
-    """
-
-    result: Dict[str, Any] = {}
-    _preserve_required_fields(resource, result)
-    filtered_entries = []
-
-    for inner_entry in resource.get("entry", []):
-        if (
-            isinstance(inner_entry, Mapping)
-            and "resource" in inner_entry
-            and isinstance(inner_entry["resource"], Mapping)
-        ):
-            inner_resource = inner_entry["resource"]
-            inner_result = extract_fields_by_fhirpath(inner_resource, paths)
-            _preserve_required_fields(inner_resource, inner_result)
-
-            filtered_entries.append(inner_result)
-        else:
-            filtered_entries.append(inner_entry)
-    result["entry"] = filtered_entries
-    return result
-
-
-def _filter_entry(
-    entry: Mapping[str, Any],
-    paths: List[str],
-) -> Dict[str, Any]:
-    """Filter a single Bundle entry's resource fields and carry through search metadata."""
-
-    logger.debug(
-        "Filtering entry with search metadata %s and paths %s",
-        entry.get("search"),
-        paths,
-    )
-
-    resource = entry.get("resource")
-
-    if isinstance(resource, Mapping):
-        resource_type = resource.get("resourceType", "")
-
-        if resource_type == "Bundle":
-            result = _filter_nested_bundle(resource, paths)
-
-        else:
-            result = extract_fields_by_fhirpath(resource, paths)
-            _preserve_required_fields(resource, result)
-
-        if entry.get("search", {}).get("mode") == "include":
-            result["search"] = entry.get("search")
+    # Filter the nested Bundle wrapper
+    if bundle_fields:
+        result = extract_fields_by_fhirpath(bundle, bundle_fields)
     else:
-        result = dict(entry)
+        result = {}
+    result = _with_preserved_fields(bundle, result)
 
+    # Filter each inner entry inside the nested Bundle
+    nested_entries = []
+    for entry in bundle.get("entry", []):
+        if not isinstance(entry, Mapping) or "resource" not in entry:
+            nested_entries.append(entry)
+            continue
+
+        inner_res = entry["resource"]
+        if not isinstance(inner_res, Mapping):
+            nested_entries.append(entry)
+            continue
+
+        # Filter the inner resource and preserve its required fields
+        filtered_inner = _filter_standard_resource(inner_res, paths_by_resource_type)
+        filtered_inner = _with_preserved_fields(inner_res, filtered_inner)
+        nested_entries.append(filtered_inner)
+
+    result["entry"] = nested_entries
     return result
+
+
+def _filter_bundle_entry(
+    entry: Mapping[str, Any],
+    paths_by_resource_type: Dict[str, List[str]],
+) -> Dict[str, Any]:
+    """Filter a single Bundle entry, handling nested Bundles iteratively."""
+    resource = entry.get("resource")
+    if not isinstance(resource, Mapping):
+        return dict(entry)
+
+    resource_type = resource.get("resourceType", "")
+    logger.debug("Filtering entry resource type: %s", resource_type)
+
+    # Decides whether to filter as a nested Bundle or standard resource
+    if resource_type == "Bundle":
+        filtered = _filter_nested_bundle(resource, paths_by_resource_type)
+    else:
+        filtered = _filter_standard_resource(resource, paths_by_resource_type)
+        filtered = _with_preserved_fields(resource, filtered)
+
+    # Carry search metadata forward
+    if entry.get("search", {}).get("mode") == "include":
+        filtered["search"] = entry.get("search")
+
+    return filtered
 
 
 def filter_resource_fields(
     data: Any,
     field_paths: List[str] | None = None,
 ) -> Any:
-    """
-    Filter a FHIR resource or list of resources to only the
-    fields matching the given FHIRPath expressions.
-
-    Handles Bundle traversal — expressions are applied to each entry's resource.
-    Returns data unchanged if field_paths is empty or None.
-    """
-
-    logger.debug(
-        "Filtering resource fields with field paths: %s",
-        field_paths,
-    )
-    if not field_paths:
+    """Filter a FHIR resource or Bundle of resources to only the matched fields."""
+    if not field_paths or not isinstance(data, Mapping):
         return data
 
-    if not isinstance(data, Mapping):
-        return data
+    paths_by_resource_type = _group_paths_by_resource_type(field_paths)
+    resource_type = data.get("resourceType", "")
 
-    # Bundle handle seperately
-    if data.get("resourceType") == "Bundle":
-        bundle_wrapper_paths, resource_paths = _split_bundle_resource_paths(field_paths)
+    if resource_type == "Bundle":
+        bundle_fields = paths_by_resource_type.get("Bundle", [])
 
-        result = (
-            extract_fields_by_fhirpath(data, bundle_wrapper_paths)
-            if bundle_wrapper_paths
-            else dict(data)
-        )
+        # Filter the top-level Bundle wrapper
+        if bundle_fields:
+            result = extract_fields_by_fhirpath(data, bundle_fields)
+        else:
+            result = dict(data)
 
-        if resource_paths:
-            result["entry"] = [
-                (
-                    _filter_entry(entry, resource_paths)
-                    if isinstance(entry, Mapping)
-                    else entry
-                )
-                for entry in data.get("entry", [])
-            ]
+        # Process entries iteratively
+        result["entry"] = [
+            _filter_bundle_entry(entry, paths_by_resource_type)
+            if isinstance(entry, Mapping)
+            else entry
+            for entry in data.get("entry", [])
+        ]
         return result
 
-    # None Bundle resource
-    elif "resourceType" in data:
-        return extract_fields_by_fhirpath(data, field_paths)
+    elif resource_type:
+        return _filter_standard_resource(data, paths_by_resource_type)
 
-    else:
-        return data
+    return data

@@ -36,6 +36,16 @@ class TestEvaluateFhirpath:
         ],
     }
 
+    PATIENT_WITH_URL_IDENTIFIER = {
+        "resourceType": "Patient",
+        "id": "p3",
+        "identifier": [
+            {"system": "http://hl7.org/fhir/sid/us-npi", "value": "1234567890"},
+            {"system": "http://other-system.org", "value": "999"},
+        ],
+    }
+
+
     def test_wrong_resource_type_prefix_silently_skipped(self):
         """Expressions for a different resource type are skipped — not in result or _not_matched."""
         result = extract_fields_by_fhirpath(self.PATIENT, ["Observation.valueQuantity"])
@@ -92,3 +102,14 @@ class TestEvaluateFhirpath:
             self.PATIENT_MULTI_NAME, ["Patient.name.where(use='official')"]
         )
         assert isinstance(result["name.where(use='official')"], list)
+
+    def test_url_with_dot_in_fhirpath_expression(self):
+        """FHIRPath expressions containing dots inside strings/URLs must evaluate correctly without getting split."""
+        result = extract_fields_by_fhirpath(
+            self.PATIENT_WITH_URL_IDENTIFIER,
+            ["Patient.identifier.where(system='http://hl7.org/fhir/sid/us-npi').value"]
+        )
+        key = "identifier.where(system='http://hl7.org/fhir/sid/us-npi').value"
+        assert key in result
+        assert result[key] == ["1234567890"]
+
