@@ -155,9 +155,17 @@ def filter_resource_fields(
         and isinstance(data["entry"], list)
         and not data.get("resourceType")
     ):
+        paths_by_resource_type = _group_paths_by_resource_type(field_paths)
         result = dict(data)
         result["entry"] = [
-            filter_resource_fields(item, field_paths) for item in data["entry"]
+            _filter_bundle_entry(item, paths_by_resource_type)
+            if isinstance(item, Mapping) and "resource" in item
+            else (
+                filter_resource_fields(item, field_paths)
+                if isinstance(item, Mapping)
+                else item
+            )
+            for item in data["entry"]
         ]
         return result
 

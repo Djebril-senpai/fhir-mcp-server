@@ -218,3 +218,27 @@ class TestFilterResourceFields:
         # Verify Observation filtered
         assert "valueQuantity" in result["entry"][1]
         assert "status" not in result["entry"][1]
+
+    def test_unwrapped_bundle_entry_shaped_filtered(self):
+        """Test filtering on an unwrapped bundle where entries are entry-shaped wrappers (containing 'resource')."""
+        data = {
+            "entry": [
+                {"resource": self.PATIENT},
+                {"resource": self.OBSERVATION}
+            ]
+        }
+        result = filter_resource_fields(
+            data, ["Patient.name", "Observation.valueQuantity"]
+        )
+        assert "entry" in result
+        assert len(result["entry"]) == 2
+        # Verify Patient entry filtered
+        assert "name" in result["entry"][0]
+        assert "gender" not in result["entry"][0]
+        assert "id" in result["entry"][0]
+        assert "resourceType" in result["entry"][0]
+        # Verify Observation entry filtered
+        assert "valueQuantity" in result["entry"][1]
+        assert "status" not in result["entry"][1]
+        assert "id" in result["entry"][1]
+        assert "resourceType" in result["entry"][1]
