@@ -143,7 +143,13 @@ def filter_resource_fields(
     field_paths: List[str] | None = None,
 ) -> Any:
     """Filter a FHIR resource or Bundle of resources to only the matched fields."""
-    if not field_paths or not isinstance(data, Mapping):
+    if not field_paths:
+        return data
+
+    if isinstance(data, list):
+        return [filter_resource_fields(item, field_paths) for item in data]
+
+    if not isinstance(data, Mapping):
         return data
 
     paths_by_resource_type = _group_paths_by_resource_type(field_paths)

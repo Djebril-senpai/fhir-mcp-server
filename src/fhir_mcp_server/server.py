@@ -403,7 +403,8 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", method="GET", params=searchParam
             )
 
-            return filter_resource_fields(bundle, response_filter_fhirpaths)
+            entries = await get_bundle_entries(bundle=bundle)
+            return filter_resource_fields(entries, response_filter_fhirpaths)
         except ResourceNotFound as ex:
             logger.error(
                 f"Resource of type '{type}' with id '{id}' not found. Caused by, ",
