@@ -32,7 +32,7 @@ def _group_paths_by_resource_type(entry_paths: List[str]) -> Dict[str, List[str]
     for path in entry_paths:
         if not path or "." not in path:
             continue
-        
+
         # Support FHIRPaths that start with Bundle.entry.resource.
         # eg: Bundle.entry.resource.Patient.name -> Patient.name
         if path.startswith("Bundle.entry.resource."):
@@ -146,11 +146,20 @@ def filter_resource_fields(
     if not field_paths:
         return data
 
-    if isinstance(data, list):
-        return [filter_resource_fields(item, field_paths) for item in data]
-
     if not isinstance(data, Mapping):
         return data
+
+    # Handle unwrapped bundle entries returned by get_bundle_entries in custom read operations (e.g., $everything).
+    if (
+        "entry" in data
+        and isinstance(data["entry"], list)
+        and not data.get("resourceType")
+    ):
+        result = dict(data)
+        result["entry"] = [
+            filter_resource_fields(item, field_paths) for item in data["entry"]
+        ]
+        return result
 
     paths_by_resource_type = _group_paths_by_resource_type(field_paths)
     resource_type = data.get("resourceType", "")

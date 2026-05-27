@@ -14,11 +14,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from fhir_mcp_server.field_filter.fhirpath_field_extractor import extract_fields_by_fhirpath
+from fhir_mcp_server.field_filter.fhirpath_field_extractor import (
+    extract_fields_by_fhirpath,
+)
 
 
 class TestEvaluateFhirpath:
-
     PATIENT = {
         "resourceType": "Patient",
         "id": "p1",
@@ -44,7 +45,6 @@ class TestEvaluateFhirpath:
             {"system": "http://other-system.org", "value": "999"},
         ],
     }
-
 
     def test_wrong_resource_type_prefix_silently_skipped(self):
         """Expressions for a different resource type are skipped — not in result or _not_matched."""
@@ -107,9 +107,8 @@ class TestEvaluateFhirpath:
         """FHIRPath expressions containing dots inside strings/URLs must evaluate correctly without getting split."""
         result = extract_fields_by_fhirpath(
             self.PATIENT_WITH_URL_IDENTIFIER,
-            ["Patient.identifier.where(system='http://hl7.org/fhir/sid/us-npi').value"]
+            ["Patient.identifier.where(system='http://hl7.org/fhir/sid/us-npi').value"],
         )
         key = "identifier.where(system='http://hl7.org/fhir/sid/us-npi').value"
         assert key in result
         assert result[key] == ["1234567890"]
-

@@ -144,28 +144,18 @@ class TestFilterResourceFields:
         assert result["entry"][0]["resourceType"] == "Patient"
 
     def test_bundle_entry_resource_prefix_path(self):
-        bundle = {
-            "resourceType": "Bundle",
-            "entry": [{"resource": self.PATIENT}]
-        }
+        bundle = {"resourceType": "Bundle", "entry": [{"resource": self.PATIENT}]}
         result = filter_resource_fields(bundle, ["Bundle.entry.resource.Patient.name"])
         assert "name" in result["entry"][0]
         assert "gender" not in result["entry"][0]
-
 
     def test_nested_bundle_filtering(self):
         nested_bundle = {
             "resourceType": "Bundle",
             "id": "inner_b1",
-            "entry": [
-                {"resource": self.PATIENT},
-                {"resource": self.OBSERVATION}
-            ]
+            "entry": [{"resource": self.PATIENT}, {"resource": self.OBSERVATION}],
         }
-        bundle = {
-            "resourceType": "Bundle",
-            "entry": [{"resource": nested_bundle}]
-        }
+        bundle = {"resourceType": "Bundle", "entry": [{"resource": nested_bundle}]}
         result = filter_resource_fields(bundle, ["Patient.name"])
         inner_result = result["entry"][0]
         assert inner_result["resourceType"] == "Bundle"
@@ -177,7 +167,7 @@ class TestFilterResourceFields:
     def test_entry_without_resource(self):
         bundle = {
             "resourceType": "Bundle",
-            "entry": [{"response": {"status": "200 OK"}}]
+            "entry": [{"response": {"status": "200 OK"}}],
         }
         result = filter_resource_fields(bundle, ["Patient.name"])
         assert result["entry"][0] == {"response": {"status": "200 OK"}}
@@ -191,27 +181,40 @@ class TestFilterResourceFields:
         nested_bundle = {
             "resourceType": "Bundle",
             "id": "inner_b2",
-            "entry": [{"resource": self.PATIENT}]
+            "entry": [{"resource": self.PATIENT}],
         }
-        bundle = {
-            "resourceType": "Bundle",
-            "entry": [{"resource": nested_bundle}]
-        }
+        bundle = {"resourceType": "Bundle", "entry": [{"resource": nested_bundle}]}
         result = filter_resource_fields(bundle, ["Patient.non_existent"])
         inner_result = result["entry"][0]
         assert "_not_matched" in inner_result["entry"][0]
         assert "Patient.non_existent" in inner_result["entry"][0]["_not_matched"]
-        
 
     def test_nested_bundle_entry_without_resource(self):
         nested_bundle = {
             "resourceType": "Bundle",
-            "entry": [{"response": {"status": "200"}}]
+            "entry": [{"response": {"status": "200"}}],
         }
-        bundle = {
-            "resourceType": "Bundle",
-            "entry": [{"resource": nested_bundle}]
-        }
+        bundle = {"resourceType": "Bundle", "entry": [{"resource": nested_bundle}]}
         result = filter_resource_fields(bundle, ["Patient.name"])
         inner_result = result["entry"][0]
         assert inner_result["entry"][0] == {"response": {"status": "200"}}
+
+    def test_unwrapped_bundle_entries_filtered(self):
+        """Test filtering on a plain dictionary containing entries but no resourceType (e.g. from get_bundle_entries)."""
+        data = {
+            "entry": [
+                self.PATIENT,
+                self.OBSERVATION
+            ]
+        }
+        result = filter_resource_fields(
+            data, ["Patient.name", "Observation.valueQuantity"]
+        )
+        assert "entry" in result
+        assert len(result["entry"]) == 2
+        # Verify Patient filtered
+        assert "name" in result["entry"][0]
+        assert "gender" not in result["entry"][0]
+        # Verify Observation filtered
+        assert "valueQuantity" in result["entry"][1]
+        assert "status" not in result["entry"][1]

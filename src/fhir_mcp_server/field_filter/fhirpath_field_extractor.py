@@ -48,8 +48,8 @@ def extract_fields_by_fhirpath(
             not_matched.append(path)
             continue
 
-        # Split on the FIRST dot only to separate the resource type (e.g. 'Patient')
-        # from the rest of the path, preserving dots inside string literals or URLs (e.g., inside .where() clauses).
+        # Split to separate the resource type (e.g. 'Patient') from the rest of the path,
+        # preserving dots inside string literals or URLs (e.g., inside .where() clauses).
         resource_type_prefix, result_key = path.split(".", 1)
         if not resource_type_prefix or not resource_type_prefix[0].isupper():
             not_matched.append(path)
@@ -63,10 +63,10 @@ def extract_fields_by_fhirpath(
             if matched:
                 # Extract the base property name by splitting on the first dot or opening parenthesis
                 # (e.g. "name.family" -> "name", "name.where(...)" -> "name").
-                root_field = re.split(r"[.(]", result_key, 1)[0]
+                root_field = re.split(r"[.(]", result_key, maxsplit=1)[0]
 
-                # fhirpathpy always returns a list. To keep the output standard, we unwrap to a
-                # single value only if the field is expected to be a scalar/non-list in the original resource schema.
+                # fhirpathpy always returns a list. To keep the output standard, unwrap to a single value
+                # only if the field is expected to be a scalar/non-list in the original resource schema.
                 result[result_key] = (
                     matched
                     if isinstance(resource.get(root_field), list) or len(matched) > 1
@@ -77,7 +77,6 @@ def extract_fields_by_fhirpath(
         except Exception as e:
             logger.warning("FHIRPath eval failed for expression %r: %s", path, e)
             errors.append(path)
-
 
     logger.debug(
         "%s: matched %s, skipped %s",
@@ -90,4 +89,3 @@ def extract_fields_by_fhirpath(
     if errors:
         result["_errors"] = errors
     return result
-

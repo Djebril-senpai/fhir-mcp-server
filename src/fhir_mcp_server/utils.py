@@ -125,7 +125,6 @@ async def get_capability_statement(metadata_url: str) -> Dict[str, Any]:
         raise ValueError("Unable to fetch FHIR metadata")
 
 
-
 def get_default_headers() -> Dict[str, str]:
     return {"Accept": "application/fhir+json", "Content-Type": "application/fhir+json"}
 
