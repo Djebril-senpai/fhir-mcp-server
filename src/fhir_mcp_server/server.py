@@ -21,7 +21,7 @@ from fhir_mcp_server.field_filter import filter_resource_fields
 from fhir_mcp_server.utils import (
     build_user_profile,
     create_async_fhir_client,
-    get_bundle_entries,
+    extract_bundle_resources,
     get_default_headers,
     get_operation_outcome,
     get_operation_outcome_exception,
@@ -401,7 +401,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", method="GET", params=searchParam
             )
 
-            entries = await get_bundle_entries(bundle=bundle)
+            entries = await extract_bundle_resources(bundle=bundle)
             return filter_resource_fields(entries, response_filter_fhirpaths)
         except ResourceNotFound as ex:
             logger.error(
@@ -504,7 +504,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", data=payload, params=searchParam
             )
 
-            return await get_bundle_entries(bundle=bundle)
+            return await extract_bundle_resources(bundle=bundle)
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource create operation. Caused by, ",
@@ -601,7 +601,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 data={**payload, "id": id},
                 params=searchParam,
             )
-            return await get_bundle_entries(bundle=bundle)
+            return await extract_bundle_resources(bundle=bundle)
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource update operation. Caused by, ",
@@ -693,7 +693,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", method="DELETE", params=searchParam
             )
             if isinstance(bundle, Dict):
-                return await get_bundle_entries(bundle=bundle)
+                return await extract_bundle_resources(bundle=bundle)
             return await get_operation_outcome(
                 severity="information",
                 code="SUCCESSFUL_DELETE",

@@ -21,7 +21,7 @@ from typing import Dict, Any
 
 from fhir_mcp_server.utils import (
     create_async_fhir_client,
-    get_bundle_entries,
+    extract_bundle_resources,
     trim_resource_capabilities,
     get_operation_outcome_exception,
     get_operation_outcome_required_error,
@@ -107,7 +107,7 @@ class TestGetBundleEntries:
             ]
         }
         
-        result = await get_bundle_entries(bundle)
+        result = await extract_bundle_resources(bundle)
         
         assert "entry" in result
         assert len(result["entry"]) == 2
@@ -119,7 +119,7 @@ class TestGetBundleEntries:
         """Test handling bundle with no entries."""
         bundle = {"resourceType": "Bundle"}
         
-        result = await get_bundle_entries(bundle)
+        result = await extract_bundle_resources(bundle)
         
         assert result == bundle
 
@@ -128,7 +128,7 @@ class TestGetBundleEntries:
         """Test handling bundle with empty entry list."""
         bundle = {"resourceType": "Bundle", "entry": []}
         
-        result = await get_bundle_entries(bundle)
+        result = await extract_bundle_resources(bundle)
         
         assert "entry" in result
         assert result["entry"] == []
@@ -138,7 +138,7 @@ class TestGetBundleEntries:
         """Test handling bundle with non-list entry."""
         bundle = {"resourceType": "Bundle", "entry": "not-a-list"}
         
-        result = await get_bundle_entries(bundle)
+        result = await extract_bundle_resources(bundle)
         
         assert result == bundle
 

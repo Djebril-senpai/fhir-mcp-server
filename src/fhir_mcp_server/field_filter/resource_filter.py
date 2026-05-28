@@ -66,11 +66,11 @@ def _with_preserved_fields(
     return result
 
 
-def _filter_standard_resource(
+def _filter_single_resource(
     resource: Mapping[str, Any],
     paths_by_resource_type: Dict[str, List[str]],
 ) -> Dict[str, Any]:
-    """Filter a standard, non-Bundle FHIR resource (e.g., Patient, Observation)."""
+    """Filter a single, non-Bundle FHIR resource (e.g., Patient, Observation)."""
     resource_type = resource.get("resourceType", "")
     paths = paths_by_resource_type.get(resource_type, [])
     return extract_fields_by_fhirpath(resource, paths)
@@ -104,7 +104,7 @@ def _filter_nested_bundle(
             continue
 
         # Filter the inner resource and preserve its required fields
-        filtered_inner = _filter_standard_resource(inner_res, paths_by_resource_type)
+        filtered_inner = _filter_single_resource(inner_res, paths_by_resource_type)
         filtered_inner = _with_preserved_fields(inner_res, filtered_inner)
         nested_entries.append(filtered_inner)
 
@@ -128,7 +128,7 @@ def _filter_bundle_entry(
     if resource_type == "Bundle":
         filtered = _filter_nested_bundle(resource, paths_by_resource_type)
     else:
-        filtered = _filter_standard_resource(resource, paths_by_resource_type)
+        filtered = _filter_single_resource(resource, paths_by_resource_type)
         filtered = _with_preserved_fields(resource, filtered)
 
     # Carry search metadata forward
@@ -149,30 +149,10 @@ def filter_resource_fields(
     if not isinstance(data, Mapping):
         return data
 
-    # Handle unwrapped bundle entries returned by get_bundle_entries in custom read operations (e.g., $everything).
-    if (
-        "entry" in data
-        and isinstance(data["entry"], list)
-        and not data.get("resourceType")
-    ):
-        paths_by_resource_type = _group_paths_by_resource_type(field_paths)
-        result = dict(data)
-        result["entry"] = [
-            _filter_bundle_entry(item, paths_by_resource_type)
-            if isinstance(item, Mapping) and "resource" in item
-            else (
-                filter_resource_fields(item, field_paths)
-                if isinstance(item, Mapping)
-                else item
-            )
-            for item in data["entry"]
-        ]
-        return result
-
     paths_by_resource_type = _group_paths_by_resource_type(field_paths)
     resource_type = data.get("resourceType", "")
 
-    if resource_type == "Bundle":
+    if resource_type == "Bundle" and isinstance(data.get("entry"), list):
         bundle_fields = paths_by_resource_type.get("Bundle", [])
 
         # Filter the top-level Bundle wrapper
@@ -181,16 +161,20 @@ def filter_resource_fields(
         else:
             result = dict(data)
 
-        # Process entries iteratively
         result["entry"] = [
             _filter_bundle_entry(entry, paths_by_resource_type)
-            if isinstance(entry, Mapping)
-            else entry
+            if isinstance(entry, Mapping) and "resource" in entry
+            else (
+                # Handles resource extracted by extract_bundle_resources()
+                _filter_single_resource(entry, paths_by_resource_type)
+                if isinstance(entry, Mapping)
+                else entry
+            )
             for entry in data.get("entry", [])
         ]
         return result
 
     elif resource_type:
-        return _filter_standard_resource(data, paths_by_resource_type)
+        return _filter_single_resource(data, paths_by_resource_type)
 
     return data
