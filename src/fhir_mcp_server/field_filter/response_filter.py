@@ -118,13 +118,17 @@ def _filter_bundle_entry(
 ) -> Dict[str, Any]:
     """Filter a single Bundle entry, handling nested Bundles iteratively."""
     resource = entry.get("resource")
+    
+    # Handles resources extracted by extract_bundle_resources()
+    if resource is None:
+        return _filter_single_resource(entry, paths_by_resource_type)
+
     if not isinstance(resource, Mapping):
         return dict(entry)
 
     resource_type = resource.get("resourceType", "")
     logger.debug("Filtering entry resource type: %s", resource_type)
 
-    # Decides whether to filter as a nested Bundle or standard resource
     if resource_type == "Bundle":
         filtered = _filter_nested_bundle(resource, paths_by_resource_type)
     else:
@@ -163,15 +167,11 @@ def filter_response_fields(
 
         result["entry"] = [
             _filter_bundle_entry(entry, paths_by_resource_type)
-            if isinstance(entry, Mapping) and "resource" in entry
-            else (
-                # Handles resource extracted by extract_bundle_resources()
-                _filter_single_resource(entry, paths_by_resource_type)
-                if isinstance(entry, Mapping)
-                else entry
-            )
+            if isinstance(entry, Mapping)
+            else entry
             for entry in data.get("entry", [])
         ]
+
         return result
 
     elif resource_type:
