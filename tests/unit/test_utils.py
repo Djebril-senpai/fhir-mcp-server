@@ -92,12 +92,12 @@ class TestCreateAsyncFhirClient:
             mock_timeout.assert_called_once_with(total=60)
 
 
-class TestGetBundleEntries:
-    """Test the get_bundle_entries function."""
+class TestExtractBundleResources:
+    """Test the extract_bundle_resources function."""
 
     @pytest.mark.asyncio
-    async def test_get_bundle_entries_with_valid_entries(self):
-        """Test extracting entries from a valid bundle."""
+    async def test_extract_bundle_resources_with_valid_entries(self):
+        """Test extracting resources from a valid bundle."""
         bundle = {
             "resourceType": "Bundle",
             "entry": [
@@ -109,13 +109,14 @@ class TestGetBundleEntries:
         
         result = await extract_bundle_resources(bundle)
         
+        assert result["resourceType"] == "Bundle"
         assert "entry" in result
         assert len(result["entry"]) == 2
         assert result["entry"][0] == {"resourceType": "Patient", "id": "1"}
         assert result["entry"][1] == {"resourceType": "Patient", "id": "2"}
 
     @pytest.mark.asyncio
-    async def test_get_bundle_entries_empty_bundle(self):
+    async def test_extract_bundle_resources_empty_bundle(self):
         """Test handling bundle with no entries."""
         bundle = {"resourceType": "Bundle"}
         
@@ -124,7 +125,7 @@ class TestGetBundleEntries:
         assert result == bundle
 
     @pytest.mark.asyncio
-    async def test_get_bundle_entries_empty_entry_list(self):
+    async def test_extract_bundle_resources_empty_entry_list(self):
         """Test handling bundle with empty entry list."""
         bundle = {"resourceType": "Bundle", "entry": []}
         
@@ -134,7 +135,7 @@ class TestGetBundleEntries:
         assert result["entry"] == []
 
     @pytest.mark.asyncio
-    async def test_get_bundle_entries_non_list_entry(self):
+    async def test_extract_bundle_resources_non_list_entry(self):
         """Test handling bundle with non-list entry."""
         bundle = {"resourceType": "Bundle", "entry": "not-a-list"}
         

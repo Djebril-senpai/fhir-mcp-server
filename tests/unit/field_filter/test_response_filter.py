@@ -201,13 +201,7 @@ class TestFilterResponseFields:
 
     def test_unwrapped_bundle_entries_filtered(self):
         """Test filtering on a plain dictionary containing entries but no resourceType (e.g. from extract_bundle_resources)."""
-        data = {
-            "resourceType": "Bundle",
-            "entry": [
-                self.PATIENT,
-                self.OBSERVATION
-            ]
-        }
+        data = {"resourceType": "Bundle", "entry": [self.PATIENT, self.OBSERVATION]}
         result = filter_response_fields(
             data, ["Patient.name", "Observation.valueQuantity"]
         )
@@ -224,10 +218,7 @@ class TestFilterResponseFields:
         """Test filtering on an unwrapped bundle where entries are entry-shaped wrappers (containing 'resource')."""
         data = {
             "resourceType": "Bundle",
-            "entry": [
-                {"resource": self.PATIENT},
-                {"resource": self.OBSERVATION}
-            ]
+            "entry": [{"resource": self.PATIENT}, {"resource": self.OBSERVATION}],
         }
         result = filter_response_fields(
             data, ["Patient.name", "Observation.valueQuantity"]
