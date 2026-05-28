@@ -14,7 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from fhir_mcp_server.field_filter import filter_resource_fields
+from fhir_mcp_server.field_filter import filter_response_fields
 
 
 class TestFilterResourceFields:
@@ -34,14 +34,14 @@ class TestFilterResourceFields:
     }
 
     def test_no_field_paths_returns_data_unchanged(self):
-        assert filter_resource_fields(self.PATIENT) is self.PATIENT
+        assert filter_response_fields(self.PATIENT) is self.PATIENT
 
     def test_non_dict_returned_unchanged(self):
-        assert filter_resource_fields("raw-string", ["Patient.name"]) == "raw-string"
-        assert filter_resource_fields(42, ["Patient.name"]) == 42
+        assert filter_response_fields("raw-string", ["Patient.name"]) == "raw-string"
+        assert filter_response_fields(42, ["Patient.name"]) == 42
 
     def test_single_resource_matched(self):
-        result = filter_resource_fields(self.PATIENT, ["Patient.name"])
+        result = filter_response_fields(self.PATIENT, ["Patient.name"])
         assert "name" in result
         assert "gender" not in result
         assert "birthDate" not in result
@@ -57,7 +57,7 @@ class TestFilterResourceFields:
                 {"resource": self.OBSERVATION},
             ],
         }
-        result = filter_resource_fields(bundle, ["Patient.name"])
+        result = filter_response_fields(bundle, ["Patient.name"])
         assert len(result["entry"]) == 2
         assert "name" in result["entry"][0]
         assert "gender" not in result["entry"][0]
@@ -73,7 +73,7 @@ class TestFilterResourceFields:
                 {"resource": self.OBSERVATION},
             ],
         }
-        result = filter_resource_fields(
+        result = filter_response_fields(
             bundle, ["Patient.name", "Observation.valueQuantity"]
         )
         assert "name" in result["entry"][0]
@@ -88,7 +88,7 @@ class TestFilterResourceFields:
             "type": "searchset",
             "entry": [{"resource": self.PATIENT}],
         }
-        result = filter_resource_fields(bundle, ["Bundle.type", "Patient.name"])
+        result = filter_response_fields(bundle, ["Bundle.type", "Patient.name"])
         assert result["type"] == "searchset"
         assert "name" in result["entry"][0]
 
@@ -104,7 +104,7 @@ class TestFilterResourceFields:
                 }
             ],
         }
-        result = filter_resource_fields(bundle, ["Patient.name"])
+        result = filter_response_fields(bundle, ["Patient.name"])
         assert result["entry"][0]["search"] == {"mode": "include"}
         assert "name" in result["entry"][0]
 
@@ -120,12 +120,12 @@ class TestFilterResourceFields:
                 }
             ],
         }
-        result = filter_resource_fields(bundle, ["Patient.name"])
+        result = filter_response_fields(bundle, ["Patient.name"])
         assert "fullUrl" not in result["entry"][0]
 
     def test_read_plain_resource_omits_id_and_resource_type(self):
         """A directly read resource does not automatically inject id and resourceType if not requested."""
-        result = filter_resource_fields(self.PATIENT, ["Patient.name"])
+        result = filter_response_fields(self.PATIENT, ["Patient.name"])
         assert "id" not in result
         assert "resourceType" not in result
 
@@ -137,7 +137,7 @@ class TestFilterResourceFields:
                 {"search": {"mode": "include"}, "resource": self.PATIENT},
             ],
         }
-        result = filter_resource_fields(bundle, ["Patient.name"])
+        result = filter_response_fields(bundle, ["Patient.name"])
         assert "id" in result["entry"][0]
         assert "resourceType" in result["entry"][0]
         assert result["entry"][0]["id"] == "p1"
@@ -145,7 +145,7 @@ class TestFilterResourceFields:
 
     def test_bundle_entry_resource_prefix_path(self):
         bundle = {"resourceType": "Bundle", "entry": [{"resource": self.PATIENT}]}
-        result = filter_resource_fields(bundle, ["Bundle.entry.resource.Patient.name"])
+        result = filter_response_fields(bundle, ["Bundle.entry.resource.Patient.name"])
         assert "name" in result["entry"][0]
         assert "gender" not in result["entry"][0]
 
@@ -156,7 +156,7 @@ class TestFilterResourceFields:
             "entry": [{"resource": self.PATIENT}, {"resource": self.OBSERVATION}],
         }
         bundle = {"resourceType": "Bundle", "entry": [{"resource": nested_bundle}]}
-        result = filter_resource_fields(bundle, ["Patient.name"])
+        result = filter_response_fields(bundle, ["Patient.name"])
         inner_result = result["entry"][0]
         assert inner_result["resourceType"] == "Bundle"
         assert inner_result["id"] == "inner_b1"
@@ -169,12 +169,12 @@ class TestFilterResourceFields:
             "resourceType": "Bundle",
             "entry": [{"response": {"status": "200 OK"}}],
         }
-        result = filter_resource_fields(bundle, ["Patient.name"])
+        result = filter_response_fields(bundle, ["Patient.name"])
         assert result["entry"][0] == {"response": {"status": "200 OK"}}
 
     def test_resource_without_resource_type(self):
         data = {"id": "1", "name": "John"}
-        result = filter_resource_fields(data, ["Patient.name"])
+        result = filter_response_fields(data, ["Patient.name"])
         assert result == data
 
     def test_nested_bundle_not_matched_stripped(self):
@@ -184,7 +184,7 @@ class TestFilterResourceFields:
             "entry": [{"resource": self.PATIENT}],
         }
         bundle = {"resourceType": "Bundle", "entry": [{"resource": nested_bundle}]}
-        result = filter_resource_fields(bundle, ["Patient.non_existent"])
+        result = filter_response_fields(bundle, ["Patient.non_existent"])
         inner_result = result["entry"][0]
         assert "_not_matched" in inner_result["entry"][0]
         assert "Patient.non_existent" in inner_result["entry"][0]["_not_matched"]
@@ -195,7 +195,7 @@ class TestFilterResourceFields:
             "entry": [{"response": {"status": "200"}}],
         }
         bundle = {"resourceType": "Bundle", "entry": [{"resource": nested_bundle}]}
-        result = filter_resource_fields(bundle, ["Patient.name"])
+        result = filter_response_fields(bundle, ["Patient.name"])
         inner_result = result["entry"][0]
         assert inner_result["entry"][0] == {"response": {"status": "200"}}
 
@@ -208,7 +208,7 @@ class TestFilterResourceFields:
                 self.OBSERVATION
             ]
         }
-        result = filter_resource_fields(
+        result = filter_response_fields(
             data, ["Patient.name", "Observation.valueQuantity"]
         )
         assert "entry" in result
@@ -229,7 +229,7 @@ class TestFilterResourceFields:
                 {"resource": self.OBSERVATION}
             ]
         }
-        result = filter_resource_fields(
+        result = filter_response_fields(
             data, ["Patient.name", "Observation.valueQuantity"]
         )
         assert "entry" in result

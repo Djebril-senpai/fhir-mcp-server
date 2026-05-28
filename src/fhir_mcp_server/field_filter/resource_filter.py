@@ -138,11 +138,11 @@ def _filter_bundle_entry(
     return filtered
 
 
-def filter_resource_fields(
+def filter_response_fields(
     data: Any,
     field_paths: List[str] | None = None,
 ) -> Any:
-    """Filter a FHIR resource or Bundle of resources to only the matched fields."""
+    """Filter a response with a single FHIR resource or Bundle of resources to only the matched fields."""
     if not field_paths:
         return data
 

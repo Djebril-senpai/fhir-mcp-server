@@ -17,7 +17,7 @@
 import click
 import logging
 
-from fhir_mcp_server.field_filter import filter_resource_fields
+from fhir_mcp_server.field_filter import filter_response_fields
 from fhir_mcp_server.utils import (
     build_user_profile,
     create_async_fhir_client,
@@ -306,7 +306,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 await client.resources(type).search(Raw(**searchParam)).fetch_raw()
             )
             logger.debug("Async resources fetched: %s", async_resources)
-            return filter_resource_fields(async_resources, response_filter_fhirpaths)
+            return filter_response_fields(async_resources, response_filter_fhirpaths)
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource search operation. Caused by, ",
@@ -402,7 +402,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
 
             entries = await extract_bundle_resources(bundle=bundle)
-            return filter_resource_fields(entries, response_filter_fhirpaths)
+            return filter_response_fields(entries, response_filter_fhirpaths)
         except ResourceNotFound as ex:
             logger.error(
                 f"Resource of type '{type}' with id '{id}' not found. Caused by, ",
