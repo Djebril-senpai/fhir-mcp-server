@@ -17,7 +17,7 @@
 from fhir_mcp_server.field_filter import filter_response_fields
 
 
-class TestFilterResourceFields:
+class TestFilterResponseFields:
     PATIENT = {
         "resourceType": "Patient",
         "id": "p1",
@@ -200,7 +200,7 @@ class TestFilterResourceFields:
         assert inner_result["entry"][0] == {"response": {"status": "200"}}
 
     def test_unwrapped_bundle_entries_filtered(self):
-        """Test filtering on a plain dictionary containing entries but no resourceType (e.g. from get_bundle_entries)."""
+        """Test filtering on a plain dictionary containing entries but no resourceType (e.g. from extract_bundle_resources)."""
         data = {
             "resourceType": "Bundle",
             "entry": [

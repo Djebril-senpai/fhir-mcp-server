@@ -14,6 +14,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from .resource_filter import filter_response_fields
+from .response_filter import filter_response_fields
 
 __all__ = ["filter_response_fields"]
