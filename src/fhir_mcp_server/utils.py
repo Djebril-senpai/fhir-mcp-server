@@ -46,10 +46,11 @@ async def create_async_fhir_client(
     return AsyncFHIRClient(**client_kwargs)
 
 
-async def get_bundle_entries(bundle: Dict[str, Any]) -> Dict[str, Any]:
+async def extract_bundle_resources(bundle: Dict[str, Any]) -> Dict[str, Any]:
     if bundle and "entry" in bundle and isinstance(bundle["entry"], list):
         logger.debug(f"found {len(bundle['entry'])} entries for type '{type}'")
         return {
+            "resourceType": "Bundle",
             "entry": [
                 entry.get("resource")
                 for entry in bundle["entry"]

@@ -3,6 +3,7 @@ aiohttp==3.13.5
 aiosignal==1.4.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
+antlr4-python3-runtime==4.13.2
 anyio==4.13.0
 attrs==26.1.0
 certifi==2026.4.22
@@ -10,6 +11,7 @@ cffi==2.0.0
 charset-normalizer==3.4.7
 click==8.3.3
 cryptography==48.0.0
+fhirpathpy==2.2.0
 fhirpy==2.2.0
 frozenlist==1.8.0
 h11==0.16.0
@@ -30,6 +32,7 @@ pydantic-core==2.46.4
 pydantic-settings==2.14.1
 pygments==2.20.0
 pyjwt==2.12.1
+python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-multipart==0.0.28
 pytz==2026.2
@@ -38,6 +41,7 @@ requests==2.34.0
 rich==15.0.0
 rpds-py==0.30.0
 shellingham==1.5.4
+six==1.17.0
 sse-starlette==3.4.4
 starlette==1.0.0
 typer==0.25.1

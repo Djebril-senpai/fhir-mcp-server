@@ -17,10 +17,11 @@
 import click
 import logging
 
+from fhir_mcp_server.field_filter import filter_response_fields
 from fhir_mcp_server.utils import (
     build_user_profile,
     create_async_fhir_client,
-    get_bundle_entries,
+    extract_bundle_resources,
     get_default_headers,
     get_operation_outcome,
     get_operation_outcome_exception,
@@ -248,7 +249,8 @@ def register_mcp_tools(mcp: FastMCP) -> None:
         description=(
             "Executes a standard FHIR `search` interaction on a given resource type, returning a bundle or list of matching resources. "
             "Use this when you need to query for multiple resources based on one or more search-parameters. "
-            "Do not use this tool for create, update, or delete operations, and be aware that large result sets may be paginated by the FHIR server."
+            "Do not use this tool for create, update, or delete operations, and be aware that large result sets may be paginated by the FHIR server. "
+            "Optionally specify fields to filter the response to only the data your task needs (e.g., Patient.birthDate, Observation.valueQuantity)."
         )
     )
     async def search(
@@ -272,6 +274,19 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 ],
             ),
         ],
+        response_filter_fhirpaths: Annotated[
+            List[str],
+            Field(
+                description="Specify FHIRPath expressions to filter the response to only the data you need. Omitting returns the full resource.",
+                examples=[
+                    [
+                        "Condition.code",
+                        "Condition.clinicalStatus",
+                        "Bundle.link.where(relation='next').url",
+                    ]
+                ],
+            ),
+        ] = [],
     ) -> Annotated[
         list[Dict[str, Any]] | Dict[str, Any],
         Field(
@@ -290,8 +305,8 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             async_resources: list[Any] = (
                 await client.resources(type).search(Raw(**searchParam)).fetch_raw()
             )
-            logger.debug("Async resources fetched:", async_resources) 
-            return async_resources
+            logger.debug("Async resources fetched: %s", async_resources)
+            return filter_response_fields(async_resources, response_filter_fhirpaths)
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource search operation. Caused by, ",
@@ -299,7 +314,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform search operation.",
+                diagnostics="The user does not have the rights to perform search operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -319,7 +334,8 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             "Performs a FHIR `read` interaction to retrieve a single resource instance by its type and resource ID, "
             "optionally refining the response with search parameters or custom operations. "
             "Use it when you know the exact resource ID and require that one resource; do not use it for bulk queries. "
-            "If additional query-level parameters or operations are needed (e.g., _elements or $validate), include them in searchParam or operation."
+            "If additional query-level parameters or operations are needed (e.g., _elements or $validate), include them in searchParam or operation. "
+            "Optionally specify fields to filter the response to only the data your task needs (e.g., Patient.birthDate, Observation.valueQuantity)."
         )
     )
     async def read(
@@ -355,6 +371,15 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 examples=["$everything"],
             ),
         ] = "",
+        response_filter_fhirpaths: Annotated[
+            List[str],
+            Field(
+                description="Specify FHIRPath expressions to filter the response to only the data you need. Omitting returns the full resource. Bundle.* expressions supported with $everything.",
+                examples=[
+                    ["Patient.name", "Patient.birthDate", "Observation.valueQuantity"]
+                ],
+            ),
+        ] = [],
     ) -> Annotated[
         Dict[str, Any],
         Field(
@@ -376,7 +401,8 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", method="GET", params=searchParam
             )
 
-            return await get_bundle_entries(bundle=bundle)
+            entries = await extract_bundle_resources(bundle=bundle)
+            return filter_response_fields(entries, response_filter_fhirpaths)
         except ResourceNotFound as ex:
             logger.error(
                 f"Resource of type '{type}' with id '{id}' not found. Caused by, ",
@@ -393,7 +419,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform read operation.",
+                diagnostics="The user does not have the rights to perform read operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -478,7 +504,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", data=payload, params=searchParam
             )
 
-            return await get_bundle_entries(bundle=bundle)
+            return await extract_bundle_resources(bundle=bundle)
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource create operation. Caused by, ",
@@ -486,7 +512,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform create operation.",
+                diagnostics="The user does not have the rights to perform create operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -575,7 +601,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 data={**payload, "id": id},
                 params=searchParam,
             )
-            return await get_bundle_entries(bundle=bundle)
+            return await extract_bundle_resources(bundle=bundle)
         except ValueError as ex:
             logger.exception(
                 f"User does not have permission to perform FHIR '{type}' resource update operation. Caused by, ",
@@ -583,7 +609,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform update operation.",
+                diagnostics="The user does not have the rights to perform update operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -667,7 +693,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
                 operation=operation or "", method="DELETE", params=searchParam
             )
             if isinstance(bundle, Dict):
-                return await get_bundle_entries(bundle=bundle)
+                return await extract_bundle_resources(bundle=bundle)
             return await get_operation_outcome(
                 severity="information",
                 code="SUCCESSFUL_DELETE",
@@ -680,7 +706,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
             )
             return await get_operation_outcome(
                 code="forbidden",
-                diagnostics=f"The user does not have the rights to perform delete operation.",
+                diagnostics="The user does not have the rights to perform delete operation.",
             )
         except OperationOutcome as ex:
             logger.exception(
@@ -766,7 +792,7 @@ def register_mcp_tools(mcp: FastMCP) -> None:
 
         except OperationOutcome as ex:
             logger.exception(
-                f"FHIR server error occurred while reading user resource. Caused by, ",
+                "FHIR server error occurred while reading user resource. Caused by, ",
                 exc_info=ex,
             )
             return ex.resource.get("issue") or await get_operation_outcome_exception()
@@ -811,7 +837,7 @@ def main(transport, log_level) -> int:
         mcp.run(transport=transport)
     except Exception as ex:
         logger.error(
-            f"Unable to run the FHIR MCP server. Caused by, %s", ex, exc_info=True
+            "Unable to run the FHIR MCP server. Caused by, %s", ex, exc_info=True
         )
         return 1
     return 0

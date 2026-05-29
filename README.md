@@ -59,6 +59,8 @@ https://github.com/user-attachments/assets/96b433f1-3e53-4564-8466-65ab48d521de
 
 - **SMART-on-FHIR based authentication support**: Securely authenticate with FHIR servers and clients
 
+- **Response Filtering using FHIRPath**: Filter resources and bundles returned by `read` and `search` operations using custom FHIRPath expressions to retrieve only the fields needed for the task, reducing payload sizes.
+
 - **Tool integration**: Integratable with any MCP client such as VS Code, Claude Desktop, and MCP Inspector
 
 ## Prerequisites
@@ -421,12 +423,14 @@ These variables configure the MCP client's secure connection to the MCP server, 
 - `search`: Executes a standard FHIR search interaction on a given resource type, returning a bundle or list of matching resources.
     - `type`: The FHIR resource type name (e.g., "MedicationRequest", "Condition", "Procedure").
     - `searchParam`: A mapping of FHIR search parameter names to their desired values (e.g., {"family":"Simpson","birthdate":"1956-05-12"}).
+    - `response_filter_fhirpaths`: (Optional) An array of FHIRPath expressions (e.g., `["Patient.name", "Patient.birthDate", "Bundle.link.where(relation='next').url"]`) to apply to the resources in the response bundle.
 
 - `read`: Performs a FHIR "read" interaction to retrieve a single resource instance by its type and resource ID, optionally refining the response with search parameters or custom operations.
     - `type`: The FHIR resource type name (e.g., "DiagnosticReport", "AllergyIntolerance", "Immunization").
     - `id`: The logical ID of a specific FHIR resource instance.
     - `searchParam`: A mapping of FHIR search parameter names to their desired values (e.g., {"device-name":"glucometer"}).
     - `operation`: The name of a custom FHIR operation or extended query defined for the resource (e.g., "$everything").
+    - `response_filter_fhirpaths`: (Optional) An array of FHIRPath expressions (e.g., `["Patient.name", "Observation.valueQuantity"]`) to filter the returned single resource (or entries when using custom operations like `$everything`).
 
 - `create`: Executes a FHIR "create" interaction to persist a new resource of the specified type.
     - `type`: The FHIR resource type name (e.g., "Device", "CarePlan", "Goal").
