@@ -41,6 +41,7 @@ wheels/
 # Environment variables
 .env
 *.env
+.env.*
 
 # Ignore OS files
 .DS_Store
