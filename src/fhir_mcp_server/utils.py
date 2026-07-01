@@ -16,6 +16,7 @@
 
 import aiohttp
 import logging
+import httpx
 
 from fhir_mcp_server.oauth import ServerConfigs
 
@@ -37,6 +38,7 @@ async def create_async_fhir_client(
         "url": config.server_base_url,
         "aiohttp_config": {
             "timeout": aiohttp.ClientTimeout(total=config.mcp_request_timeout),
+            "ssl": False,
         },
         "extra_headers": extra_headers,
     }
@@ -113,7 +115,7 @@ async def get_capability_statement(metadata_url: str) -> Dict[str, Any]:
     """
     try:
         logger.debug(f"Fetching CapabilityStatement from {metadata_url}")
-        async with create_mcp_http_client() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.get(url=metadata_url, headers=get_default_headers())
             response.raise_for_status()
             metadata_json = response.json()
